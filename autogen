@@ -1,0 +1,9 @@
+#!/bin/bash
+
+#Utility script using autoconf/automake to build everything.
+eigen=$1
+
+autoreconf -ifv
+./configure --with-eigen=$eigen
+make
+

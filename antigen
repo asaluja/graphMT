@@ -1,0 +1,14 @@
+#!/bin/bash
+
+#Utility script to remove all generated files from autoconf/autoreconf
+
+#If you run this script, you must run autogen.sh again. 
+
+if test -f Makefile; then
+    make clean
+    make distclean
+fi
+
+rm -rf autom4te.cache
+
+rm -f Makefile.in configure depcomp install-sh missing aclocal.m4
