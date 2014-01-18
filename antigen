@@ -11,4 +11,4 @@ fi
 
 rm -rf autom4te.cache
 
-rm -f Makefile.in configure depcomp install-sh missing aclocal.m4
+rm -f Makefile.in configure depcomp install-sh missing aclocal.m4 config.h.in*
