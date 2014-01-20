@@ -9,7 +9,7 @@ class Options {
  private:
   po::variables_map conf;
   void printOptions(po::options_description opts);
-  void checkParameterConsistency();
+  void checkParameterConsistency(); //internal function that makes sure if certain options are defined, then other required options are also defined
 
  public:
   Options(int argc, char** argv);
@@ -18,5 +18,4 @@ class Options {
   enum GPAlgo { LabelProp, StructLabelProp }; 
   enum Side { Source, Target };
   po::variables_map getConf();
-  //add getConf and maybe storeConf later
 };

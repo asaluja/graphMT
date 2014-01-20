@@ -59,7 +59,6 @@ Options::Options(int argc, char** argv){
       ifstream config_FH(config_loc.c_str());
       po::store(po::parse_config_file(config_FH, opts), conf); 
       checkParameterConsistency();
-      //need to check consistency of options here
     }
     else {
       cerr << "Unrecognized argument(s)" << endl; 
