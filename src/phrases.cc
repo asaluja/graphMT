@@ -4,6 +4,7 @@
 #include <fstream>
 #include <numeric>
 #include <set>
+#include <math.h>
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
@@ -17,23 +18,23 @@ const string delimiter = " ||| ";
 //standard constructor
 Phrases::Phrases(){
   all_phrases = vector<Phrase*>();
-  phrStr2ID = map<string, int>();
-  label_phrStr2ID = map<string, int>();
-  vocab = map<string, int>();
+  phrStr2ID = map<string, unsigned int>();
+  label_phrStr2ID = map<string, unsigned int>();
+  vocab = map<string, unsigned int>();
   max_tgtPL = make_tuple("", "", 0); 
   numLabeled = 0, numUnlabeled = 0; 
 }
 
 //constructor for initializing phrases of other side
-Phrases::Phrases(Phrases* orig_phrases){
+Phrases::Phrases(const Phrases* orig_phrases){
   all_phrases = vector<Phrase*>();
-  phrStr2ID = map<string,int>(orig_phrases->label_phrStr2ID);
-  label_phrStr2ID = map<string, int>();
-  vocab = map<string, int>();
+  phrStr2ID = map<string, unsigned int>(orig_phrases->label_phrStr2ID);
+  label_phrStr2ID = map<string, unsigned int>();
+  vocab = map<string, unsigned int>();
   max_tgtPL = make_tuple("", "", 0);
   numUnlabeled = phrStr2ID.size();
   numLabeled = 0;
-  typedef map<string,int>::iterator iter;
+  typedef map<string,unsigned int>::const_iterator iter;
   for (iter it = phrStr2ID.begin(); it != phrStr2ID.end(); it++){ //adding target phrases as Phrase structs
     Phrase* phrase = new Phrase(it->second, it->first, false); 
     all_phrases.push_back(phrase); 
@@ -41,7 +42,7 @@ Phrases::Phrases(Phrases* orig_phrases){
     boost::split(tokens, it->first, boost::is_any_of(" "));    
     for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
       if (vocab.find(tokens[i]) == vocab.end()){ 
-	int id = vocab.size();
+	const unsigned int id = vocab.size();
 	vocab[tokens[i]] = id;
       }
     }
@@ -55,9 +56,42 @@ Phrases::~Phrases(){
     delete all_phrases[i];
 }
 
+void Phrases::writePhraseIDsToFile(const string filename, const bool writeLabeled){
+  if (writeLabeled)
+    cerr << "Error: 'writeLabeled' = true for writePhraseIDs not implemented" << endl; 
+  else {
+    ofstream phraseIDs;
+    phraseIDs.open(filename.c_str()); 
+    vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases(); 
+    for (unsigned int i = 0; i < unlabeled_phrases.size(); i++)
+      phraseIDs << unlabeled_phrases[i]->phrase_str << delimiter << unlabeled_phrases[i]->id << endl; 
+    phraseIDs.close();
+  }
+}
+
+void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabeled){
+  if (readLabeled)
+    cerr << "Error: 'readLabeled' = true for readPhraseIDs not implemented" << endl; 
+  else {
+    ifstream phraseIDs(filename.c_str());
+    if (phraseIDs.is_open()){
+      string line;
+      while (getline(phraseIDs, line)){
+	boost::trim(line);
+	vector<string> elements = multiCharSplitter(line);
+	assert(elements.size() == 2);
+	Phrase* phrase = new Phrase(all_phrases.size(), elements[0], false); 
+	all_phrases.push_back(phrase); 
+	numUnlabeled++; 
+      }
+    phraseIDs.close();    
+    }
+  }
+}
+
 //goes through label distribution for each labeled soure phrase and normalizes (sum = 1)
 void Phrases::normalizeLabelDistributions(){  
-  typedef map<int,double>::iterator iter;
+  typedef map<int,double>::iterator iter; //need to modify the map, so not const_iterator
   for (unsigned int i = 0; i < all_phrases.size(); i++ ){
     map<int,double>* labels = &all_phrases[i]->label_distribution; 
     double normalizer = 0;
@@ -69,42 +103,75 @@ void Phrases::normalizeLabelDistributions(){
 }
 
 //function primarily meant for debugging
-void Phrases::printLabels(string phrase){
+void Phrases::printLabels(const string phrase){
   int phrID = phrStr2ID[phrase];
   map<int,double> labels = all_phrases[phrID]->label_distribution; 
-  typedef map<int,double>::iterator it;
+  typedef map<int,double>::const_iterator it;
   for (it i = labels.begin(); i != labels.end(); i++)
     cout << "Key: " << i->first << "; Value: " << i->second << endl; 
 }
 
+void Phrases::addGeneratedPhrases(const vector<string> generated_phrases){
+  for (unsigned int i = 0; i < generated_phrases.size(); i++){
+    Phrase* phrase = new Phrase(all_phrases.size(), generated_phrases[i], false); 
+    numUnlabeled++; 
+    all_phrases.push_back(phrase); 
+  }
+}
+
+//this format assumes a cdec/moses decoder style output format
+//for the mbest-list phrases (delimited by ' ||| ')
+int Phrases::readMBestListFromFile(const string filename){
+  unsigned int maxPL = 0; 
+  ifstream mbest_list(filename.c_str()); 
+  string line;    
+  if (mbest_list.is_open()){
+    while (getline(mbest_list, line)){    
+      boost::trim(line); 
+      vector<string> elements = multiCharSplitter(line); 
+      assert(elements.size() > 2); 
+      string mbest_hyp = elements[1]; 
+      vector<string> tgtTokens;
+      boost::split(tgtTokens, mbest_hyp, boost::is_any_of(" "));    
+      if (tgtTokens.size() > maxPL)
+	maxPL = tgtTokens.size();
+      Phrase* phrase = new Phrase(all_phrases.size(), mbest_hyp, false);     
+      all_phrases.push_back(phrase); 
+      numUnlabeled++; 
+    }
+    mbest_list.close(); 
+  }
+  cout << "Total number of mbest list candidates generated: " << all_phrases.size() << endl; 
+  return maxPL; 
+}
+
 //goes through evaluation corpus, first extracts all n-grams of length PL, and then adds
 //n-grams that aren't in phrase tablea s unlabeled n-grams. 
-void Phrases::addUnlabeledPhrasesFromFile(string filename, int PL, string out_filename, bool analyze){
-  map<string, int> ngram_count = map<string, int>();  
-  ifstream eval_corpus; 
-  eval_corpus.exceptions(ios::failbit | ios::badbit);
-  eval_corpus.open(filename.c_str(), ios_base::in | ios_base::binary);
+void Phrases::addUnlabeledPhrasesFromFile(const string filename, const unsigned int PL, const string out_filename, const bool analyze){
+  map<const string, unsigned int> ngram_count = map<const string, unsigned int>();  
+  ifstream eval_corpus(filename.c_str());
   string line;
-  while (!eval_corpus.eof()){
-    getline(eval_corpus, line); 
-    boost::trim(line); 
-    vector<ngram_triple> ngrams_from_line = Features::extractNGrams(PL, line); 
-    string ngram;
-    for (unsigned int i = 0; i < ngrams_from_line.size(); i++ ){
-      tie(ngram, ignore, ignore) = ngrams_from_line[i]; 
-      pair<map<string, int>::iterator,bool> ret; 
-      ret = ngram_count.insert(pair<string, int>(ngram, 1)); 
-      if (ret.second == false)
-	ngram_count[ngram]++;
+  if (eval_corpus.is_open()){
+    while (getline(eval_corpus, line)){
+      boost::trim(line);
+      const vector<ngram_triple> ngrams_from_line = FeatureExtractor::extractNGrams(PL, line); 
+      string ngram;
+      for (unsigned int i = 0; i < ngrams_from_line.size(); i++ ){
+	tie(ngram, ignore, ignore) = ngrams_from_line[i]; 
+	pair<map<const string, unsigned int>::iterator,bool> ret; 
+	ret = ngram_count.insert(pair<const string, unsigned int>(ngram, 1)); 
+	if (ret.second == false)
+	  ngram_count[ngram]++;
+      }
     }
+    eval_corpus.close();
   }
-  eval_corpus.close();
   cout << "Number of " << PL << "-grams in evaluation corpus: " << ngram_count.size() << endl;   
   ofstream unlabeled_phrases;
   unlabeled_phrases.open(out_filename.c_str()); //write out unlabeled n-grams
-  typedef map<string,int>::iterator iter;
+  typedef map<const string, unsigned int>::const_iterator iter;
   for (iter it = ngram_count.begin(); it != ngram_count.end(); it++ ){
-    string srcPhr = it->first;
+    const string srcPhr = it->first;
     iter checkUnlabeled = phrStr2ID.find(srcPhr);
     if (checkUnlabeled == phrStr2ID.end()){ //add phrases not in phrase table
       numUnlabeled++;
@@ -120,11 +187,10 @@ void Phrases::addUnlabeledPhrasesFromFile(string filename, int PL, string out_fi
 }
 
 //for analysis purposes: breaks down unknown n-grams into all known unigrams, some known, or none known.  
-void Phrases::analyzeUnlabeledPhrases(map<string, int>& ngram_count){
-  vector<Phrase*> unlabeled_phrases(numUnlabeled);
-  copy_if(all_phrases.begin(), all_phrases.end(), unlabeled_phrases.begin(), [](Phrase* phrase) { return !phrase->isLabeled(); }); 
+void Phrases::analyzeUnlabeledPhrases(map<const string, unsigned int>& ngram_count){
+  vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases(); 
   int kk = 0, kkt = 0, uk = 0, ukt = 0, uu = 0, uut = 0;
-  typedef map<string, int>::iterator iter;
+  typedef map<string, unsigned int>::const_iterator iter;
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){
     vector<string> srcTokens;
     boost::split(srcTokens, unlabeled_phrases[i]->phrase_str, boost::is_any_of(" "));
@@ -138,7 +204,7 @@ void Phrases::analyzeUnlabeledPhrases(map<string, int>& ngram_count){
       ukt += ngram_count[unlabeled_phrases[i]->phrase_str];
     }
     else {
-      set<bool>::iterator val = is_word_oov.begin();
+      set<bool>::const_iterator val = is_word_oov.begin();
       if (*val){ //unknown word
 	uu++;
 	uut += ngram_count[unlabeled_phrases[i]->phrase_str];
@@ -155,25 +221,23 @@ void Phrases::analyzeUnlabeledPhrases(map<string, int>& ngram_count){
 }
 
 //function that goes through phrase table file and initializes labeled phrases
-void Phrases::addLabeledPhrasesFromFile(string filename, int PL){
-  ifstream pt_file; //file handle for phrase table
-  pt_file.exceptions(ios::failbit | ios::badbit); 
-  pt_file.open(filename.c_str(), ios_base::in | ios_base::binary);  
-  fs::path p(filename); 
+void Phrases::addLabeledPhrasesFromFile(const string filename, const unsigned int PL, const string format){
+  ifstream pt_file(filename.c_str()); //file handle for phrase table
+  const fs::path p(filename); //do we need to clean this up somewhere? 
   if (p.extension() == ".gz"){ //special handling for .gz files
     io::filtering_stream<io::input> decompressor;
     decompressor.push(io::gzip_decompressor());
     decompressor.push(pt_file);
     for (string line; getline(decompressor, line);){
-      initPhraseFromFile(line, PL); 
+      initPhraseFromFile(line, PL, format); 
       numLabeled++;
     }
   }
   else { //for non .gz files --> test this out properly!
     string line;
-    while (!pt_file.eof()){
+    while (getline(pt_file, line)){
       getline(pt_file, line); 
-      initPhraseFromFile(line, PL);
+      initPhraseFromFile(line, PL, format);
       numLabeled++;
     }
   }
@@ -187,29 +251,32 @@ void Phrases::addLabeledPhrasesFromFile(string filename, int PL){
 
 //function that takes a line from a phrase table and initialzes, as long as the phrase is 
 //of the correct phrase length. 
-void Phrases::initPhraseFromFile(string line, int phrase_length){
+void Phrases::initPhraseFromFile(string line, const unsigned int phrase_length, const string format){
   boost::trim(line);
   vector<string> elements = multiCharSplitter(line); 
-  string srcPhr = elements[0];
-  vector<string> srcTokens;
+  const string srcPhr = (format == "cdec") ? elements[1] : elements[0];   
+  vector<string> srcTokens; //initialize this maybe? 
   boost::split(srcTokens, srcPhr, boost::is_any_of(" "));
   if (srcTokens.size() == phrase_length){
     Phrase* phrase = NULL;
     if (phrStr2ID.find(srcPhr) == phrStr2ID.end()){ //new phrase
       for (unsigned int i = 0; i < srcTokens.size(); i++){ //add unigrams to vocab if not seen before
 	if (vocab.find(srcTokens[i]) == vocab.end()){ 
-	  int id = vocab.size();
+	  const int id = vocab.size();
 	  vocab[srcTokens[i]] = id;
 	}
       }
-      int phrID = all_phrases.size();
+      const int phrID = all_phrases.size();
       phrase = new Phrase(phrID, srcPhr, true); 
       phrStr2ID[srcPhr] = phrID;
       all_phrases.push_back(phrase);
     }
     else 
       phrase = all_phrases[phrStr2ID[srcPhr]];
-    addLabel(phrase, elements); 
+    if (format == "cdec")
+      addLabelCdec(phrase, elements);
+    else
+      addLabelMoses(phrase, elements); 
   }
 }
 
@@ -229,12 +296,22 @@ vector<string> Phrases::multiCharSplitter(string line){
 
 //given a source phrase and a line from the phrase table, this function does the appropriate
 //book-keeping to add the label.  
-void Phrases::addLabel(Phrase* phrase, vector<string> elements){
-  string tgtPhr = elements[1];
-  string featStr = elements[2];
+//Note: this function is consistent with the cdec formatting
+void Phrases::addLabelCdec(Phrase* phrase, vector<string> elements){
+  const string tgtPhr = elements[2];
+  const string featStr = elements[3];
   vector<string> featStrVec;
+  double fwdPhrProb = 0; 
   boost::split(featStrVec, featStr, boost::is_any_of(" ")); 
-  double fwdPhrProb = atof(featStrVec[0].c_str());
+  for (unsigned int i = 0; i < featStrVec.size(); i++ ){
+    vector<string> keyValPair; 
+    boost::split(keyValPair, featStrVec[i], boost::is_any_of(" ")); 
+    if (keyValPair[0] == "EgivenFCoherent"){
+      const double fwdPhrLogProb = -atof(keyValPair[1].c_str()); 
+      fwdPhrProb = pow(10, fwdPhrLogProb); 
+      break; 
+    }
+  }
   int label_id; 
   if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase
     label_id = label_phrStr2ID.size();
@@ -244,10 +321,34 @@ void Phrases::addLabel(Phrase* phrase, vector<string> elements){
     label_id = label_phrStr2ID[tgtPhr];
   phrase->label_distribution[label_id] = fwdPhrProb;    
   vector<string> tgtTokens;
-  int maxPL;
+  unsigned int maxPL;
   tie(ignore, ignore, maxPL) = max_tgtPL;  
   boost::split(tgtTokens, tgtPhr, boost::is_any_of(" "));
   if (tgtTokens.size() > maxPL)
     max_tgtPL = make_tuple(phrase->phrase_str, tgtPhr, tgtTokens.size()); 
-}
-  
+} 
+
+//given a source phrase and a line from the phrase table, this function does the appropriate
+//book-keeping to add the label.  
+//NOTE: this function is specific to the older formatting of the phrase table
+void Phrases::addLabelMoses(Phrase* phrase, vector<string> elements){
+  const string tgtPhr = elements[1];
+  const string featStr = elements[2];
+  vector<string> featStrVec;
+  boost::split(featStrVec, featStr, boost::is_any_of(" ")); 
+  const double fwdPhrProb = atof(featStrVec[0].c_str()); //in moses, features are just string, P(e|f) is first one
+  int label_id; 
+  if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase
+    label_id = label_phrStr2ID.size();
+    label_phrStr2ID[tgtPhr] = label_id;
+  }
+  else
+    label_id = label_phrStr2ID[tgtPhr];
+  phrase->label_distribution[label_id] = fwdPhrProb;    
+  vector<string> tgtTokens;
+  unsigned int maxPL;
+  tie(ignore, ignore, maxPL) = max_tgtPL;  
+  boost::split(tgtTokens, tgtPhr, boost::is_any_of(" "));
+  if (tgtTokens.size() > maxPL)
+    max_tgtPL = make_tuple(phrase->phrase_str, tgtPhr, tgtTokens.size()); 
+} 

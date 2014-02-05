@@ -3,16 +3,18 @@
 #include <string>
 #include <vector>
 #include <tuple>
+#include "phrases.h"
 
 using namespace std;
 typedef tuple<string,int,int> ngram_triple;
 
-class Features {
+class FeatureExtractor {
  public:
-  Features();
-  ~Features();
-  static vector<ngram_triple> extractNGrams(int n, string str);
+  FeatureExtractor();
+  ~FeatureExtractor();
+  static vector<ngram_triple> extractNGrams(const unsigned int n, const string str);
+  vector<string> filterSentences(const string mono_dir_loc, Phrases* phrases, const unsigned int minPL, const unsigned int maxPL, const unsigned int maxPhrCount, const string monolingual_out); 
   
  private:
-  static string concat(vector<string> words, int start, int end); 
+  static string concat(vector<string> words, const unsigned int start, const unsigned int end); 
 };

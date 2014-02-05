@@ -14,7 +14,7 @@ class Options {
  public:
   Options(int argc, char** argv);
   ~Options();
-  enum Stage { SelectUnlabeled, CorpusSelection, FeatureExtraction, GraphConstruction, GraphPropagation };
+  enum Stage { SelectUnlabeled, SelectCorpora, ExtractFeatures, ConstructGraph, PropagateGraph };
   enum GPAlgo { LabelProp, StructLabelProp }; 
   enum Side { Source, Target };
   po::variables_map getConf();
