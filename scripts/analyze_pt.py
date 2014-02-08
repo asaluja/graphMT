@@ -17,8 +17,8 @@ maxPLTgt = 0
 for line in filehandle:
     numPhrasePairs += 1
     elements = line.strip().split(' ||| ')
-    srcPhr = elements[1]
-    tgtPhr = elements[2]
+    srcPhr = elements[0]
+    tgtPhr = elements[1]
     if len(srcPhr.split()) > maxPLSrc:
         maxPLSrc = len(srcPhr.split())
     if len(tgtPhr.split()) > maxPLTgt:

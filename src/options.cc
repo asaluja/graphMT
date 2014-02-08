@@ -33,17 +33,19 @@ Options::Options(int argc, char** argv){
     ("target_monolingual", po::value<string>()->default_value(""), "Location of (filtered) target monolingual corpus file (not a directory)")
     ("max_phrase_count", po::value<int>()->default_value(100), "For each generated phrase, maximum count that we want to look for in the monolingual corpora (default: 100)")
     ("max_target_phrase_length", po::value<int>()->default_value(5), "Maximum target phrase length to extract from monolingual corpora (default: 5)")
-    ("mbest_location", po::value<string>()->default_value(""), "Location of baseline decoder m-best list")
-    ("target_phraseID", po::value<string>()->default_value(""), "Location to write the target phrase IDs to")
+    ("mbest_fromdecoder_location", po::value<string>()->default_value(""), "Location of m-best list produced by baseline decoder")
+    ("mbest_processed_location", po::value<string>()->default_value(""), "Location of processed m-best list; written out during target-side corpora selection and read in during graph propagation when initializing translation candidates")
+    ("target_phraseIDs", po::value<string>()->default_value(""), "Location to write the target phrase IDs to")
     ("source_stopwords", po::value<string>()->default_value(""), "Location of sorted list of source-side types, from most frequent to least frequent")
     ("target_stopwords", po::value<string>()->default_value(""), "Location of list of target-side types, from most frequent to least frequent")
     ("stop_list_size", po::value<int>()->default_value(20), "Number of frequent types to consider (default: 20)")
-    ("id2feature_source", po::value<string>()->default_value(""), "Location to write the ID to feature map on the source side")
-    ("id2feature_target", po::value<string>()->default_value(""), "Location to write the ID to feature map on the target side")
-    ("source_inverted_index", po::value<string>()->default_value(""), "Location of source inverted index data structure")
-    ("target_inverted_index", po::value<string>()->default_value(""), "Location of target inverted index data structure")
+    ("source_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index and feature string to ID maps for source side")
+    ("target_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index and feature string to ID maps for target side")    
+    ("source_feature_matrix", po::value<string>()->default_value(""), "Location of source feature matrix")
+    ("target_feature_matrix", po::value<string>()->default_value(""), "Location of target feature matrix")
     ("window_size", po::value<int>()->default_value(2), "Window size on each side to look for features for feature extraction (default: 2)")
     ("minimum_feature_count", po::value<int>()->default_value(0), "Minimum feature count of a feature for a phrase to be included in its feature space (default: 0)")
+    ("analyze_feature_matrix", "Whether to analyze the feature matrices after they are constructed (default: false)")
     ("graph_construction_side", po::value<string>()->default_value("Source"), "For graph construction, which side to construct; values include Source and Target")
     ("k_nearest_neighbors", po::value<int>()->default_value(500), "Number of nearest neighbors to include when constructing the similarity graphs (default: 500)")
     ("source_similarity_matrix", po::value<string>()->default_value(""), "Location of source similarity matrix, in X format")
@@ -118,9 +120,15 @@ void Options::checkParameterConsistency(){
 	exit(0);
       }
     }  
-    else if (stage == "featureextraction"){
-      cerr << "Not defined yet" << endl; 
-      exit(0);
+    else if (stage == "extractfeatures"){
+      if (!(conf.count("source_monolingual")) || !(conf.count("target_monolingual")) || !(conf.count("target_phraseIDs")) || !(conf.count("source_stopwords")) || !(conf.count("target_stopwords"))){
+	cerr << "For 'ExtractFeatures' stage, on the input side need to define locations for source and target monolingual files (via 'source_monolingual' and 'target_monolingual' fields), the target side phrases and phrase IDs (from the corpora selection step) via 'target_phraseIDs', and the stop words on both source and target sides (via 'source_stopwords' and 'target-stopwords')" << endl; 
+	exit(0);
+      }
+      else if (!(conf.count("source_feature_extractor")) || !(conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix")) || !(conf.count("target_feature_matrix"))){
+	cerr << "For 'ExtractFeatures' stage, on the output side need to define locations for feature string to ID maps and inverted index data structures (via the 'source_feature_extractor' and 'target_feature_extractor' fields), as well as the source and target feature matrices for downstream graph construction computation (via the 'source_feature_matrix' and 'target_feature_matrix' fields)" << endl; 
+	exit(0); 
+      }
     }
     else if (stage == "graphconstruction"){
       cerr << "Not defined yet" << endl; 

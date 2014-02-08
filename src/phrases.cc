@@ -9,6 +9,10 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/serialization/map.hpp>
+#include <boost/serialization/vector.hpp>
 
 namespace io = boost::iostreams;
 namespace fs = boost::filesystem;
@@ -32,21 +36,14 @@ Phrases::Phrases(const Phrases* orig_phrases){
   label_phrStr2ID = map<string, unsigned int>();
   vocab = map<string, unsigned int>();
   max_tgtPL = make_tuple("", "", 0);
-  numUnlabeled = phrStr2ID.size();
-  numLabeled = 0;
+  numLabeled = 0, numUnlabeled = 0; 
   typedef map<string,unsigned int>::const_iterator iter;
   for (iter it = phrStr2ID.begin(); it != phrStr2ID.end(); it++){ //adding target phrases as Phrase structs
-    Phrase* phrase = new Phrase(it->second, it->first, false); 
-    all_phrases.push_back(phrase); 
     vector<string> tokens; 
     boost::split(tokens, it->first, boost::is_any_of(" "));    
-    for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
-      if (vocab.find(tokens[i]) == vocab.end()){ 
-	const unsigned int id = vocab.size();
-	vocab[tokens[i]] = id;
-      }
-    }
+    initPhrase(it->first, tokens, false); 
   }
+
   cout << "Target vocabulary size: " << vocab.size() << endl; 
   cout << "Number of phrases: " << numLabeled + numUnlabeled << endl; 
 }
@@ -72,7 +69,7 @@ void Phrases::writePhraseIDsToFile(const string filename, const bool writeLabele
 void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabeled){
   if (readLabeled)
     cerr << "Error: 'readLabeled' = true for readPhraseIDs not implemented" << endl; 
-  else {
+  else { 
     ifstream phraseIDs(filename.c_str());
     if (phraseIDs.is_open()){
       string line;
@@ -80,9 +77,10 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
 	boost::trim(line);
 	vector<string> elements = multiCharSplitter(line);
 	assert(elements.size() == 2);
-	Phrase* phrase = new Phrase(all_phrases.size(), elements[0], false); 
-	all_phrases.push_back(phrase); 
-	numUnlabeled++; 
+	vector<string> tokens;
+	boost::split(tokens, elements[0], boost::is_any_of(" ")); 
+	if (phrStr2ID.find(elements[0]) == phrStr2ID.end()) //i.e., we have not taken the label from the phrase table, it is a generated label that we are reading from file
+	  initPhrase(elements[0], tokens, false); 
       }
     phraseIDs.close();    
     }
@@ -113,35 +111,50 @@ void Phrases::printLabels(const string phrase){
 
 void Phrases::addGeneratedPhrases(const vector<string> generated_phrases){
   for (unsigned int i = 0; i < generated_phrases.size(); i++){
-    Phrase* phrase = new Phrase(all_phrases.size(), generated_phrases[i], false); 
-    numUnlabeled++; 
-    all_phrases.push_back(phrase); 
+    vector<string> tokens; 
+    boost::split(tokens, generated_phrases[i], boost::is_any_of(" "));    
+    initPhrase(generated_phrases[i], tokens, false); 
   }
 }
 
 //this format assumes a cdec/moses decoder style output format
 //for the mbest-list phrases (delimited by ' ||| ')
-int Phrases::readMBestListFromFile(const string filename){
+int Phrases::readMBestListFromFile(const string filename_in, const string filename_out, const vector<Phrase*> unlabeled_phrases){
   unsigned int maxPL = 0; 
-  ifstream mbest_list(filename.c_str()); 
+  map<const string, vector<string> > mbest_by_src = map<const string, vector<string> >();
+  typedef map<const string, vector<string> >::iterator iter;
+  ifstream mbest_list(filename_in.c_str()); 
   string line;    
   if (mbest_list.is_open()){
     while (getline(mbest_list, line)){    
       boost::trim(line); 
       vector<string> elements = multiCharSplitter(line); 
       assert(elements.size() > 2); 
-      string mbest_hyp = elements[1]; 
+      const string srcPhr = unlabeled_phrases[atoi(elements[0].c_str())]->phrase_str; 
+      const string mbest_hyp = elements[1]; 
       vector<string> tgtTokens;
       boost::split(tgtTokens, mbest_hyp, boost::is_any_of(" "));    
       if (tgtTokens.size() > maxPL)
 	maxPL = tgtTokens.size();
       Phrase* phrase = new Phrase(all_phrases.size(), mbest_hyp, false);     
       all_phrases.push_back(phrase); 
+      iter mbest_vec = mbest_by_src.find(srcPhr); 
+      if (mbest_vec == mbest_by_src.end()){
+	vector<string> mbest_phrases_for_src = vector<string>();
+	mbest_phrases_for_src.push_back(mbest_hyp); 
+	mbest_by_src[srcPhr] = mbest_phrases_for_src; 
+      }
+      else
+	mbest_vec->second.push_back(mbest_hyp); 
       numUnlabeled++; 
     }
     mbest_list.close(); 
   }
   cout << "Total number of mbest list candidates generated: " << all_phrases.size() << endl; 
+  ofstream outFile(filename_out.c_str());
+  boost::archive::binary_oarchive oa(outFile); 
+  oa << mbest_by_src; 
+  outFile.close(); 
   return maxPL; 
 }
 
@@ -174,9 +187,9 @@ void Phrases::addUnlabeledPhrasesFromFile(const string filename, const unsigned 
     const string srcPhr = it->first;
     iter checkUnlabeled = phrStr2ID.find(srcPhr);
     if (checkUnlabeled == phrStr2ID.end()){ //add phrases not in phrase table
-      numUnlabeled++;
-      Phrase* phrase = new Phrase(all_phrases.size(), srcPhr, false);     
-      all_phrases.push_back(phrase); 
+      vector<string> srcTokens;
+      boost::split(srcTokens, srcPhr, boost::is_any_of(" ")); 
+      initPhrase(srcPhr, srcTokens, false); 
       unlabeled_phrases << srcPhr << endl; 
     }
   }
@@ -224,26 +237,26 @@ void Phrases::analyzeUnlabeledPhrases(map<const string, unsigned int>& ngram_cou
 void Phrases::addLabeledPhrasesFromFile(const string filename, const unsigned int PL, const string format){
   ifstream pt_file(filename.c_str()); //file handle for phrase table
   const fs::path p(filename); //do we need to clean this up somewhere? 
+  unsigned int numPhrases = 0; 
   if (p.extension() == ".gz"){ //special handling for .gz files
     io::filtering_stream<io::input> decompressor;
     decompressor.push(io::gzip_decompressor());
     decompressor.push(pt_file);
     for (string line; getline(decompressor, line);){
       initPhraseFromFile(line, PL, format); 
-      numLabeled++;
+      numPhrases++; 
     }
   }
   else { //for non .gz files --> test this out properly!
     string line;
-    while (getline(pt_file, line)){
-      getline(pt_file, line); 
-      initPhraseFromFile(line, PL, format);
-      numLabeled++;
+    if (pt_file.is_open()){
+      while (getline(pt_file, line))
+	initPhraseFromFile(line, PL, format);
+      pt_file.close(); 
     }
   }
-  pt_file.close();
   cout << "Source vocabulary size: " << vocab.size() << endl; 
-  cout << "Number of phrases in phrase table: " << numLabeled << endl; 
+  cout << "Number of phrases in phrase table: " << numPhrases << endl; 
   cout << "Number of phrases with desired phrase length " << PL << ": " << all_phrases.size() << endl; 
   cout << "Maximum target phrase length: " << get<2>(max_tgtPL) << endl; 
   cout << "Phrase pair: " << get<0>(max_tgtPL) << " ||| " << get<1>(max_tgtPL) << endl;   
@@ -258,26 +271,30 @@ void Phrases::initPhraseFromFile(string line, const unsigned int phrase_length, 
   vector<string> srcTokens; //initialize this maybe? 
   boost::split(srcTokens, srcPhr, boost::is_any_of(" "));
   if (srcTokens.size() == phrase_length){
-    Phrase* phrase = NULL;
-    if (phrStr2ID.find(srcPhr) == phrStr2ID.end()){ //new phrase
-      for (unsigned int i = 0; i < srcTokens.size(); i++){ //add unigrams to vocab if not seen before
-	if (vocab.find(srcTokens[i]) == vocab.end()){ 
-	  const int id = vocab.size();
-	  vocab[srcTokens[i]] = id;
-	}
-      }
-      const int phrID = all_phrases.size();
-      phrase = new Phrase(phrID, srcPhr, true); 
-      phrStr2ID[srcPhr] = phrID;
-      all_phrases.push_back(phrase);
-    }
-    else 
-      phrase = all_phrases[phrStr2ID[srcPhr]];
+    Phrase* phrase = (phrStr2ID.find(srcPhr) == phrStr2ID.end()) ? initPhrase(srcPhr, srcTokens, true) : all_phrases[phrStr2ID[srcPhr]]; 
     if (format == "cdec")
       addLabelCdec(phrase, elements);
     else
       addLabelMoses(phrase, elements); 
   }
+}
+ 
+Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> tokens, bool isLabeled){
+  for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
+    if (vocab.find(tokens[i]) == vocab.end()){
+      const int id = vocab.size();
+      vocab[tokens[i]] = id;
+    }
+  }
+  const int phrID = all_phrases.size();
+  Phrase* phrase = new Phrase(phrID, phr, isLabeled); 
+  phrStr2ID[phr] = phrID;
+  all_phrases.push_back(phrase); 
+  if (isLabeled)
+    numLabeled++;
+  else
+    numUnlabeled++;
+  return phrase; 
 }
 
 //utility function to split a string according to a multi-character delimiter

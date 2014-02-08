@@ -44,7 +44,7 @@ int main(int argc, char** argv){
       cout << "Beginning corpus filtering for target side" << endl; 
       start = clock();
       Phrases* mbest_phrases = new Phrases();
-      int maxPL = mbest_phrases->readMBestListFromFile(conf["mbest_location"].as<string>()); 
+      int maxPL = mbest_phrases->readMBestListFromFile(conf["mbest_fromdecoder_location"].as<string>(), conf["mbest_processed_location"].as<string>(), src_phrases->getUnlabeledPhrases()); 
       if (maxPL > conf["max_target_phrase_length"].as<int>()){
 	cout << "Maximum target phrase length from m-best phrases: " << maxPL << endl; 
 	maxPL = conf["max_target_phrase_length"].as<int>();
@@ -53,16 +53,44 @@ int main(int argc, char** argv){
       vector<string> generated_candidates = corpus_selector->filterSentences(conf["target_mono_dir"].as<string>(), mbest_phrases, 1, maxPL, conf["max_phrase_count"].as<int>(), conf["target_monolingual"].as<string>());
       cout << "Time taken: " << duration(start, clock()) / numThreads << endl; 
       cout << "Number of m-best phrases with count > 0: " << generated_candidates.size() << endl; 
-      delete mbest_phrases; 
       tgt_phrases->addGeneratedPhrases(generated_candidates); 
-      tgt_phrases->writePhraseIDsToFile(conf["target_phraseID"].as<string>(), false); 
-      
+      tgt_phrases->writePhraseIDsToFile(conf["target_phraseIDs"].as<string>(), false);    
+      delete mbest_phrases; 
     }
     else {
       cerr << "Incorrect argument for 'corpora_selection_side' field" << endl; 
       exit(0);
     }
     delete corpus_selector;
+  }
+  else if (stage == "extractfeatures"){
+    cout << "Beginning source-side feature extraction" << endl; 
+    start = clock();
+    FeatureExtractor* source_extractor = new FeatureExtractor();
+    source_extractor->readStopWords(conf["source_stopwords"].as<string>(), conf["stop_list_size"].as<int>()); 
+    source_extractor->extractFeatures(src_phrases, conf["source_monolingual"].as<string>(), conf["window_size"].as<int>(), pl, pl);
+    if (conf["minimum_feature_count"].as<int>() > 1)
+      source_extractor->pruneFeaturesByCount(conf["minimum_feature_count"].as<int>());
+    if (conf.count("analyze_feature_matrix"))
+      source_extractor->analyzeFeatureMatrix(src_phrases->getUnlabeledPhrases());
+    source_extractor->rescaleCoocToPMI();
+    source_extractor->writeToFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
+    cout << "Time taken: " << duration(start, clock()) << endl;     
+    delete source_extractor; 
+    /* cout << "Beginning target-side feature extraction" << endl; 
+    start = clock();
+    FeatureExtractor* target_extractor = new FeatureExtractor();
+    tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); 
+    target_extractor->readStopWords(conf["target_stopwords"].as<string>(), conf["stop_list_size"].as<int>()); 
+    target_extractor->extractFeatures(tgt_phrases, conf["target_monolingual"].as<string>(), conf["window_size"].as<int>(), 1, conf["max_target_phrase_length"].as<int>()); 
+    if (conf["minimum_feature_count"].as<int>() > 0)
+      target_extractor->pruneFeaturesByCount(conf["minimum_feature_count"].as<int>());
+    if (conf.count("analyze_feature_matrix"))
+      target_extractor->analyzeFeatureMatrix(tgt_phrases->getUnlabeledPhrases());
+    target_extractor->rescaleCoocToPMI();
+    target_extractor->writeToFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
+    cout << "Time taken: " << duration(start, clock()) << endl;     
+    delete target_extractor; */
   }
   delete opts;
   delete src_phrases;
