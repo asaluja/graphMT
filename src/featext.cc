@@ -47,6 +47,14 @@ void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxL
   saveMarket(feature_matrix, featMatLoc); 
 }
 
+void FeatureExtractor::readFromFile(const string featMatLoc, const string invIdxLoc){
+  ifstream inFileInvIdx(invIdxLoc.c_str());
+  boost::archive::binary_iarchive ia(inFileInvIdx); 
+  ia >> inverted_idx; 
+  inFileInvIdx.close(); 
+  loadMarket(feature_matrix, featMatLoc); 
+}
+
 vector<string> FeatureExtractor::filterSentences(const string mono_dir_loc, Phrases* phrases, const unsigned int minPL, const unsigned int maxPL, const unsigned int maxPhrCount, const string monolingual_out){  
   map<string, unsigned int> unlabeled_count = map<string, unsigned int>();
   typedef map<string, unsigned int>::const_iterator const_it; 
@@ -271,6 +279,7 @@ void FeatureExtractor::rescaleCoocToPMI(){
   //PMI, right mult, left_mult are local and will be cleaned up here  
 }
 
+//doesn't seem to be fully working? try compress maybe? 
 void FeatureExtractor::pruneFeaturesByCount(const unsigned int minCount){
   int nnzs = feature_matrix.nonZeros();
   cout << "Initially: " << nnzs << " non-zero elements in feature matrix" << endl; 

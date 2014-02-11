@@ -280,10 +280,12 @@ void Phrases::initPhraseFromFile(string line, const unsigned int phrase_length, 
 }
  
 Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> tokens, bool isLabeled){
-  for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
-    if (vocab.find(tokens[i]) == vocab.end()){
-      const int id = vocab.size();
-      vocab[tokens[i]] = id;
+  if (isLabeled){ //vocab is only used for unlabeled phrases analysis 
+    for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
+      if (vocab.find(tokens[i]) == vocab.end()){
+	const int id = vocab.size();
+	vocab[tokens[i]] = id;
+      }
     }
   }
   const int phrID = all_phrases.size();

@@ -7,6 +7,7 @@
 #include "options.h"
 #include "phrases.h"
 #include "featext.h"
+#include "graph.h"
 
 using namespace std;
 namespace po = boost::program_options;
@@ -75,7 +76,7 @@ int main(int argc, char** argv){
       source_extractor->analyzeFeatureMatrix(src_phrases->getUnlabeledPhrases());
     source_extractor->rescaleCoocToPMI();
     source_extractor->writeToFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
-    cout << "Time taken: " << duration(start, clock()) << endl;     
+    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;     
     delete source_extractor; 
     /* cout << "Beginning target-side feature extraction" << endl; 
     start = clock();
@@ -91,6 +92,28 @@ int main(int argc, char** argv){
     target_extractor->writeToFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
     cout << "Time taken: " << duration(start, clock()) << endl;     
     delete target_extractor; */
+  }
+  else if (stage == "constructgraphs"){
+    FeatureExtractor* featuresFromFile = new FeatureExtractor();
+    string side = conf["graph_construction_side"].as<string>();
+    transform(side.begin(), side.end(), side.begin(), ::tolower);
+    if (side == "source"){
+      featuresFromFile->readFromFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
+      Graph* src_graph = new Graph(featuresFromFile); 
+      src_graph->writeToFile(conf["source_similarity_matrix"].as<string>()); 
+      delete src_graph; 
+    }
+    else if (side == "target"){
+      featuresFromFile->readFromFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
+      Graph* tgt_graph = new Graph(featuresFromFile); 
+      tgt_graph->writeToFile(conf["target_similarity_matrix"].as<string>()); 
+      delete tgt_graph;
+    }
+    else {
+      cerr << "Incorrect argument for 'graph_construction_side' field" << endl; 
+      exit(0);
+    }
+    
   }
   delete opts;
   delete src_phrases;

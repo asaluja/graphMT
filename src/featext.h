@@ -30,6 +30,7 @@ class FeatureExtractor {
   void analyzeFeatureMatrix(const vector<Phrases::Phrase*> unlabeled_phrases); 
   void rescaleCoocToPMI();
   void writeToFile(const string featMatLoc, const string invIdxLoc); 
+  void readFromFile(const string featMatLoc, const string invIdxLoc); 
   
  private:
   enum ContextSide { Left, Right };  

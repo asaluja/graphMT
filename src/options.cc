@@ -130,9 +130,15 @@ void Options::checkParameterConsistency(){
 	exit(0); 
       }
     }
-    else if (stage == "graphconstruction"){
-      cerr << "Not defined yet" << endl; 
-      exit(0);
+    else if (stage == "constructgraphs"){
+      if (!(conf.count("graph_construction_side")) || !(conf.count("source_feature_extractor") || conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix") || conf.count("target_feature_matrix"))){
+	cerr << "For 'ConstructGraphs' stage, need to define graph construction side (source or target), and for the corresponding side, the locations of the feature matrices and inverted index/feature ID locations" << endl; 
+	exit(0); 
+      }
+      else if (!(conf.count("source_similarity_matrix") || conf.count("target_similarity_matrix"))){
+	cerr << "For 'ConstructGraphs' stage, need to define the location to write the similarity matrix" << endl; 
+	exit(0); 
+      }   
     }
     else if (stage == "graphpropagation"){
       cerr << "Not defined yet" << endl; 
