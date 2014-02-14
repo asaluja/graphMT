@@ -85,6 +85,7 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
     phraseIDs.close();    
     }
   }
+  cout << "Total number of phrases now: " << numLabeled + numUnlabeled << endl; 
 }
 
 //goes through label distribution for each labeled soure phrase and normalizes (sum = 1)
@@ -113,7 +114,8 @@ void Phrases::addGeneratedPhrases(const vector<string> generated_phrases){
   for (unsigned int i = 0; i < generated_phrases.size(); i++){
     vector<string> tokens; 
     boost::split(tokens, generated_phrases[i], boost::is_any_of(" "));    
-    initPhrase(generated_phrases[i], tokens, false); 
+    if (phrStr2ID.find(generated_phrases[i]) == phrStr2ID.end()) //i.e., we have not taken the label from the phrase table, it is a generated label that we are reading
+      initPhrase(generated_phrases[i], tokens, false); 
   }
 }
 
@@ -131,7 +133,8 @@ int Phrases::readMBestListFromFile(const string filename_in, const string filena
       vector<string> elements = multiCharSplitter(line); 
       assert(elements.size() > 2); 
       const string srcPhr = unlabeled_phrases[atoi(elements[0].c_str())]->phrase_str; 
-      const string mbest_hyp = elements[1]; 
+      string mbest_hyp = elements[1];
+      boost::trim(mbest_hyp); 
       vector<string> tgtTokens;
       boost::split(tgtTokens, mbest_hyp, boost::is_any_of(" "));    
       if (tgtTokens.size() > maxPL)

@@ -78,7 +78,7 @@ int main(int argc, char** argv){
     source_extractor->writeToFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
     cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;     
     delete source_extractor; 
-    /* cout << "Beginning target-side feature extraction" << endl; 
+    cout << "Beginning target-side feature extraction" << endl; 
     start = clock();
     FeatureExtractor* target_extractor = new FeatureExtractor();
     tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); 
@@ -90,30 +90,45 @@ int main(int argc, char** argv){
       target_extractor->analyzeFeatureMatrix(tgt_phrases->getUnlabeledPhrases());
     target_extractor->rescaleCoocToPMI();
     target_extractor->writeToFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
-    cout << "Time taken: " << duration(start, clock()) << endl;     
-    delete target_extractor; */
+    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;     
+    delete target_extractor; 
   }
   else if (stage == "constructgraphs"){
     FeatureExtractor* featuresFromFile = new FeatureExtractor();
     string side = conf["graph_construction_side"].as<string>();
     transform(side.begin(), side.end(), side.begin(), ::tolower);
     if (side == "source"){
+      cout << "Starting graph construction on source side" << endl; 
+      start = clock();
       featuresFromFile->readFromFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
-      Graph* src_graph = new Graph(featuresFromFile); 
+      Graph* src_graph = new Graph(featuresFromFile, conf["k_nearest_neighbors"].as<int>()); 
+      if (conf.count("analyze_similarity_matrix"))
+	src_graph->analyzeSimilarityMatrix(src_phrases->getUnlabeledPhrases());
+      cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+      start = clock();
       src_graph->writeToFile(conf["source_similarity_matrix"].as<string>()); 
+      cout << "Time taken for writing out matrix: " << duration(start, clock()) << " seconds" << endl; 
       delete src_graph; 
     }
     else if (side == "target"){
+      cout << "Starting graph construction on target side" << endl; 
+      start = clock(); 
       featuresFromFile->readFromFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
-      Graph* tgt_graph = new Graph(featuresFromFile); 
+      Graph* tgt_graph = new Graph(featuresFromFile, conf["k_nearest_neighbors"].as<int>()); 
+      if (conf.count("analyze_similarity_matrix")){
+	tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); //check if defined in opts
+	tgt_graph->analyzeSimilarityMatrix(tgt_phrases->getUnlabeledPhrases());
+      }
+      cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+      start = clock(); 
       tgt_graph->writeToFile(conf["target_similarity_matrix"].as<string>()); 
+      cout << "Time taken for writing out matrix: " << duration(start, clock()) << " seconds" << endl; 
       delete tgt_graph;
     }
     else {
       cerr << "Incorrect argument for 'graph_construction_side' field" << endl; 
       exit(0);
-    }
-    
+    }    
   }
   delete opts;
   delete src_phrases;

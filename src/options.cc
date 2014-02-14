@@ -47,10 +47,11 @@ Options::Options(int argc, char** argv){
     ("minimum_feature_count", po::value<int>()->default_value(0), "Minimum feature count of a feature for a phrase to be included in its feature space (default: 0)")
     ("analyze_feature_matrix", "Whether to analyze the feature matrices after they are constructed (default: false)")
     ("graph_construction_side", po::value<string>()->default_value("Source"), "For graph construction, which side to construct; values include Source and Target")
-    ("k_nearest_neighbors", po::value<int>()->default_value(500), "Number of nearest neighbors to include when constructing the similarity graphs (default: 500)")
+    ("k_nearest_neighbors", po::value<int>()->default_value(500), "Number of nearest neighbors to include when constructing the similarity graphs (default: 500)")    
     ("source_similarity_matrix", po::value<string>()->default_value(""), "Location of source similarity matrix, in X format")
     ("target_similarity_matrix", po::value<string>()->default_value(""), "Location of target similarity matrix, in X format")
-    ("seed_target_knn", "Whether to use k-nearest neighbors according to target similarity graph when seeding translation candidates for unlabeled phrases (default: false)")
+    ("analyze_similarity_matrix", "Whether to analyze the similarity matrix after it is constructed (default: false)")
+    ("seed_target_knn", "Whether to use k-nearest neighbors according to target similarity graph when seeding translation candidates for unlabeled phrases (default: false)")    
     ("maximum_candidate_size", po::value<int>()->default_value(50), "Maximum number of candidates to consider for each unlabeled phrase (default: 50)");
 
   if (argc > 1){    
@@ -128,7 +129,7 @@ void Options::checkParameterConsistency(){
       else if (!(conf.count("source_feature_extractor")) || !(conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix")) || !(conf.count("target_feature_matrix"))){
 	cerr << "For 'ExtractFeatures' stage, on the output side need to define locations for feature string to ID maps and inverted index data structures (via the 'source_feature_extractor' and 'target_feature_extractor' fields), as well as the source and target feature matrices for downstream graph construction computation (via the 'source_feature_matrix' and 'target_feature_matrix' fields)" << endl; 
 	exit(0); 
-      }
+	}
     }
     else if (stage == "constructgraphs"){
       if (!(conf.count("graph_construction_side")) || !(conf.count("source_feature_extractor") || conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix") || conf.count("target_feature_matrix"))){
@@ -140,7 +141,7 @@ void Options::checkParameterConsistency(){
 	exit(0); 
       }   
     }
-    else if (stage == "graphpropagation"){
+    else if (stage == "propagategraph"){
       cerr << "Not defined yet" << endl; 
       exit(0);
     }

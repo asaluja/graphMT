@@ -61,7 +61,7 @@ vector<string> FeatureExtractor::filterSentences(const string mono_dir_loc, Phra
   vector<Phrases::Phrase*> unlabeled_phrases = phrases->getUnlabeledPhrases();
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++ ) //initialize counts to 0
     unlabeled_count[unlabeled_phrases[i]->phrase_str] = 0;
-  cout << "Number of unlabeled phrases: " << unlabeled_phrases.size() << endl; 
+  cout << "Number of unique unlabeled phrases: " << unlabeled_count.size() << endl; 
   vector<string> keys_to_search; 
   for (const_it it = unlabeled_count.begin(); it != unlabeled_count.end(); it++) //extract keys for intersection
     keys_to_search.push_back(it->first); 
@@ -236,6 +236,7 @@ void FeatureExtractor::addContext(const unsigned int phraseID, vector<string> su
 	phraseIDs.insert(phraseID);
 	inverted_idx[contextID] = phraseIDs; 
       } 
+      //featMat_triplets.push_back(triplet(phraseID, contextID, 1.0)); //over here, we only add the feature if it is not a stop word
     }    
     featMat_triplets.push_back(triplet(phraseID, contextID, 1.0)); 
   }
@@ -244,7 +245,7 @@ void FeatureExtractor::addContext(const unsigned int phraseID, vector<string> su
 void FeatureExtractor::rescaleCoocToPMI(){
   cout << "Converting co-occurrence counts to PMI values" << endl;   
   //VectorXd indFeatSumRowInv = (feature_matrix*VectorXd::Ones(feature_matrix.cols())).array().inverse(); //compute sum over features for each phrase, and take reciprocal
-  VectorXd indFeatSumRowInv = feature_matrix*VectorXd::Ones(feature_matrix.cols()).cwiseInverse(); 
+  VectorXd indFeatSumRowInv = (feature_matrix*VectorXd::Ones(feature_matrix.cols())).cwiseInverse(); 
   SparseMatrix<double,RowMajor> left_mult(feature_matrix.rows(), feature_matrix.rows()); 
   vector<triplet> left_mult_diagonal = vector<triplet>();
   for (unsigned int i = 0; i < indFeatSumRowInv.size(); i++) //place inverse sum on diagonal
@@ -254,12 +255,13 @@ void FeatureExtractor::rescaleCoocToPMI(){
   SparseMatrix<double,RowMajor> PMI(feature_matrix.rows(), feature_matrix.cols()); 
   PMI.reserve(feature_matrix.nonZeros()); 
   PMI = left_mult * feature_matrix; 
-  //for memory efficiency, may want to clear left_mult, left_mult_diagonal here, and/or overwrite feature matrix
+  //for memory efficiency, may want to clear left_mult, left_mult_diagonal here
   cout << "Computed Prob(feature | phrase)" << endl; 
   double allFeatureSum = 0.0; 
-  for (int i = 0; i < feature_matrix.size(); i++){ //sum over all feature values
-    for (SparseMatrix<double,RowMajor>::InnerIterator it(feature_matrix,i); it; ++it)
+  for (int i = 0; i < feature_matrix.outerSize(); i++){ //sum over all feature values
+    for (SparseMatrix<double,RowMajor>::InnerIterator it(feature_matrix,i); it; ++it){
       allFeatureSum += it.value(); 
+    }
   }
   RowVectorXd indFeatSumColInv = ((RowVectorXd::Ones(feature_matrix.rows())*feature_matrix).array()*(1.0/allFeatureSum)).cwiseInverse();
   SparseMatrix<double> right_mult(feature_matrix.cols(), feature_matrix.cols()); 
@@ -270,7 +272,7 @@ void FeatureExtractor::rescaleCoocToPMI(){
   right_mult.setFromTriplets(right_mult_diagonal.begin(), right_mult_diagonal.end());
   PMI = PMI * right_mult; 
   cout << "Computed Prob(feature | phrase) / P(feature)" << endl; 
-  for (int i = 0; i < PMI.size(); i++){ //convert result to log ratio
+  for (int i = 0; i < PMI.outerSize(); i++){ //convert result to log ratio
     for (SparseMatrix<double,RowMajor>::InnerIterator it(PMI,i); it; ++it)
       PMI.coeffRef(it.row(), it.col()) = log(it.value()); 
   }
@@ -283,7 +285,7 @@ void FeatureExtractor::rescaleCoocToPMI(){
 void FeatureExtractor::pruneFeaturesByCount(const unsigned int minCount){
   int nnzs = feature_matrix.nonZeros();
   cout << "Initially: " << nnzs << " non-zero elements in feature matrix" << endl; 
-  for (int i = 0; i < feature_matrix.size(); i++){
+  for (int i = 0; i < feature_matrix.outerSize(); i++){
     for (SparseMatrix<double,RowMajor>::InnerIterator it(feature_matrix,i); it; ++it){
       if (it.value() < minCount)
 	feature_matrix.coeffRef(it.row(), it.col()) = 0;
