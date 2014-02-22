@@ -15,8 +15,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/set.hpp>
 
@@ -40,7 +40,7 @@ FeatureExtractor::~FeatureExtractor(){
 
 void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxLoc){
   ofstream outFileInvIdx(invIdxLoc.c_str()); 
-  boost::archive::binary_oarchive oa(outFileInvIdx); //if this works, update phrases.cc too
+  boost::archive::text_oarchive oa(outFileInvIdx); //if this works, update phrases.cc too
   oa << inverted_idx; 
   outFileInvIdx.close();  
   //if need be, we can write out featStr2ID as well
@@ -49,7 +49,7 @@ void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxL
 
 void FeatureExtractor::readFromFile(const string featMatLoc, const string invIdxLoc){
   ifstream inFileInvIdx(invIdxLoc.c_str());
-  boost::archive::binary_iarchive ia(inFileInvIdx); 
+  boost::archive::text_iarchive ia(inFileInvIdx); 
   ia >> inverted_idx; 
   inFileInvIdx.close(); 
   loadMarket(feature_matrix, featMatLoc); 

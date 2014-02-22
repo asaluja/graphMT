@@ -75,12 +75,18 @@ Graph::Graph(FeatureExtractor* features, const unsigned int k){
   cout << "After symmetrizing (and normalizing), total NNZs in random walk matrix: " << sim_mat.nonZeros() << endl; 
 }
 
+Graph::Graph(const string simMatLoc){
+  loadMarket(sim_mat, simMatLoc); 
+}
+
+
 Graph::~Graph(){
 }
 
 void Graph::writeToFile(const string simMatLoc){
   saveMarket(sim_mat, simMatLoc); 
 }
+
 
 void Graph::analyzeSimilarityMatrix(const vector<Phrases::Phrase*> unlabeled_phrases){
   set<int> unlabeled_ids = set<int>();

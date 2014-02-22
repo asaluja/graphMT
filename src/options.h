@@ -16,6 +16,7 @@ class Options {
   ~Options();
   enum Stage { SelectUnlabeled, SelectCorpora, ExtractFeatures, ConstructGraph, PropagateGraph };
   enum GPAlgo { LabelProp, StructLabelProp }; 
+  enum GraphConstrMethod { CosineSim }; 
   enum Side { Source, Target };
   po::variables_map getConf();
 };

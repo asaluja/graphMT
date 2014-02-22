@@ -47,10 +47,13 @@ Options::Options(int argc, char** argv){
     ("minimum_feature_count", po::value<int>()->default_value(0), "Minimum feature count of a feature for a phrase to be included in its feature space (default: 0)")
     ("analyze_feature_matrix", "Whether to analyze the feature matrices after they are constructed (default: false)")
     ("graph_construction_side", po::value<string>()->default_value("Source"), "For graph construction, which side to construct; values include Source and Target")
+    ("graph_construction_method", po::value<string>()->default_value("CosineSim"), "For graph construction, which method to use (default: CosineSim)")
     ("k_nearest_neighbors", po::value<int>()->default_value(500), "Number of nearest neighbors to include when constructing the similarity graphs (default: 500)")    
     ("source_similarity_matrix", po::value<string>()->default_value(""), "Location of source similarity matrix, in X format")
     ("target_similarity_matrix", po::value<string>()->default_value(""), "Location of target similarity matrix, in X format")
     ("analyze_similarity_matrix", "Whether to analyze the similarity matrix after it is constructed (default: false)")
+    ("lexical_model_location", po::value<string>()->default_value(""), "Location of lexical model, which is used when sorting translation candidates for unlabeled phrases and also as a feature value when writing out the additional phrase table")
+    ("graph_propagation_algorithm", po::value<string>()->default_value("LabelProp"), "What graph propagation algorithm to use; choices include: LabelProp and StructLabelProp (default: LabelProp)")
     ("seed_target_knn", "Whether to use k-nearest neighbors according to target similarity graph when seeding translation candidates for unlabeled phrases (default: false)")    
     ("maximum_candidate_size", po::value<int>()->default_value(50), "Maximum number of candidates to consider for each unlabeled phrase (default: 50)");
 
@@ -129,7 +132,7 @@ void Options::checkParameterConsistency(){
       else if (!(conf.count("source_feature_extractor")) || !(conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix")) || !(conf.count("target_feature_matrix"))){
 	cerr << "For 'ExtractFeatures' stage, on the output side need to define locations for feature string to ID maps and inverted index data structures (via the 'source_feature_extractor' and 'target_feature_extractor' fields), as well as the source and target feature matrices for downstream graph construction computation (via the 'source_feature_matrix' and 'target_feature_matrix' fields)" << endl; 
 	exit(0); 
-	}
+      }
     }
     else if (stage == "constructgraphs"){
       if (!(conf.count("graph_construction_side")) || !(conf.count("source_feature_extractor") || conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix") || conf.count("target_feature_matrix"))){
@@ -142,8 +145,20 @@ void Options::checkParameterConsistency(){
       }   
     }
     else if (stage == "propagategraph"){
-      cerr << "Not defined yet" << endl; 
-      exit(0);
+      if (!(conf.count("source_similarity_matrix")) || !(conf.count("target_phraseIDs")) || !(conf.count("lexical_model_location"))){
+	cerr << "For 'PropagateGraphs' stage, need to define at least the location of the source matrix and the target phrase IDs" << endl; 
+	exit(0);
+      }
+      else if (conf.count("seed_target_knn") && !(conf.count("target_similarity_matrix"))){
+	cerr << "For 'PropagateGraphs' stage, if 'seed_target_knn' field is enabled, then you must define 'target_similarity_matrix' field" << endl; 
+	exit(0); 
+      }
+      string algo = conf["graph_propagation_algorithm"].as<string>();
+      transform(stage.begin(), stage.end(), stage.begin(), ::tolower);
+      if ((algo == "structlabelprop") && !(conf.count("target_similarity_matrix"))){
+	cerr << "For 'PropagateGraphs' stage, if 'StructLabelProp' is the graph propagation algorithm, then you must define 'target_similarity_matrix' field" << endl; 
+	exit(0);
+      }
     }
     else {
       cerr << "Invalid stage defined in config file; Please have a look at ./graph_prop --help" << endl; 

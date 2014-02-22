@@ -8,6 +8,7 @@
 #include "phrases.h"
 #include "featext.h"
 #include "graph.h"
+#include "lexical.h"
 
 using namespace std;
 namespace po = boost::program_options;
@@ -129,6 +130,23 @@ int main(int argc, char** argv){
       cerr << "Incorrect argument for 'graph_construction_side' field" << endl; 
       exit(0);
     }    
+  }
+  else if (stage == "propagategraph"){
+    LexicalScorer* lex = new LexicalScorer(conf["lexical_model_location"].as<string>());     
+    tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); //check if defined in opts
+    cout << "Number of target phrases: " << tgt_phrases->getNumUnlabeledPhrases() << endl; 
+    Graph* src_graph = new Graph(conf["source_similarity_matrix"].as<string>()); 
+    Graph* tgt_graph = NULL; 
+    string algo = conf["graph_propagation_algorithm"].as<string>();
+    transform(stage.begin(), stage.end(), stage.begin(), ::tolower);
+    if (conf.count("seed_target_knn") || algo== "structlabelprop")
+      tgt_graph = new Graph(conf["target_similarity_matrix"].as<string>()); 
+    
+    //read in stop words as phrases? 
+    //generate labels with lexical score --> need to read in lexical model, etc. for this
+    //then, compute marginals
+    //then, iterate and do labelprop 
+    //after all iterations complete, write out the expanded PT
   }
   delete opts;
   delete src_phrases;

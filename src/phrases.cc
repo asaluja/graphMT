@@ -9,8 +9,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/vector.hpp>
 
@@ -155,7 +155,7 @@ int Phrases::readMBestListFromFile(const string filename_in, const string filena
   }
   cout << "Total number of mbest list candidates generated: " << all_phrases.size() << endl; 
   ofstream outFile(filename_out.c_str());
-  boost::archive::binary_oarchive oa(outFile); 
+  boost::archive::text_oarchive oa(outFile); 
   oa << mbest_by_src; 
   outFile.close(); 
   return maxPL; 
@@ -357,8 +357,9 @@ void Phrases::addLabelMoses(Phrase* phrase, vector<string> elements){
   const string tgtPhr = elements[1];
   const string featStr = elements[2];
   vector<string> featStrVec;
-  boost::split(featStrVec, featStr, boost::is_any_of(" ")); 
-  const double fwdPhrProb = atof(featStrVec[0].c_str()); //in moses, features are just string, P(e|f) is first one
+  boost::split(featStrVec, featStr, boost::is_any_of(" "));
+  assert(featStrVec.size() == 4); //new moses phrase table format has 4 features
+  const double fwdPhrProb = atof(featStrVec[2].c_str()); //in moses, features are just string, P(e|f) is third one
   int label_id; 
   if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase
     label_id = label_phrStr2ID.size();

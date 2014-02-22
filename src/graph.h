@@ -14,6 +14,7 @@ typedef Triplet<double> triplet;
 class Graph{
  public:
   Graph(FeatureExtractor* features, const unsigned int k);
+  explicit Graph(const string simMatLoc); 
   ~Graph();
   void writeToFile(const string simMatLoc);
   void analyzeSimilarityMatrix(const vector<Phrases::Phrase*> unlabeled_phrases); 
