@@ -40,11 +40,13 @@ def maxLexFgivenE(fwords, ewords, ttable):
     return math.pow(10, -maxOffScore)
 
 def main():
-    pps = []
+    src_pps = []
+    tgt_pps = []
     for line in sys.stdin:
         elements = line.strip().split(' ||| ')
-        pps.append((elements[0], elements[1]))
-    lexScores = computeLexicalScores(sys.argv[1], pps)
+        src_pps.append(elements[0])
+        tgt_pps.append(elements[1])
+    lexScores = computeLexicalScores(sys.argv[1], src_pps, tgt_pps)
     for fwdScore, bwdScore in lexScores:
         print "Forward score: %.3f; Backward score: %.3f"%(fwdScore, bwdScore)
 

@@ -53,7 +53,7 @@ int main(int argc, char** argv){
 	cout << "Setting to value in config file: " << conf["max_target_phrase_length"].as<int>() << endl; 
       }
       vector<string> generated_candidates = corpus_selector->filterSentences(conf["target_mono_dir"].as<string>(), mbest_phrases, 1, maxPL, conf["max_phrase_count"].as<int>(), conf["target_monolingual"].as<string>());
-      cout << "Time taken: " << duration(start, clock()) / numThreads << endl; 
+      cout << "Time taken: " << duration(start, clock()) / numThreads << " seconds" << endl; 
       cout << "Number of m-best phrases with count > 0: " << generated_candidates.size() << endl; 
       tgt_phrases->addGeneratedPhrases(generated_candidates); 
       tgt_phrases->writePhraseIDsToFile(conf["target_phraseIDs"].as<string>(), false);    
@@ -75,9 +75,16 @@ int main(int argc, char** argv){
       source_extractor->pruneFeaturesByCount(conf["minimum_feature_count"].as<int>());
     if (conf.count("analyze_feature_matrix"))
       source_extractor->analyzeFeatureMatrix(src_phrases->getUnlabeledPhrases());
+    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock();
+    source_extractor->writeCoocToFile(conf["source_cooc_matrix"].as<string>()); 
+    cout << "Time taken to write out co-oc file: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock(); 
     source_extractor->rescaleCoocToPMI();
+    cout << "Time taken: " << duration(start, clock())<< " seconds" << endl; 
+    start = clock(); 
     source_extractor->writeToFile(conf["source_feature_matrix"].as<string>(), conf["source_feature_extractor"].as<string>()); 
-    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;     
+    cout << "Time taken to write out feature matrix: " << duration(start, clock()) << " seconds" << endl; 
     delete source_extractor; 
     cout << "Beginning target-side feature extraction" << endl; 
     start = clock();
@@ -89,9 +96,16 @@ int main(int argc, char** argv){
       target_extractor->pruneFeaturesByCount(conf["minimum_feature_count"].as<int>());
     if (conf.count("analyze_feature_matrix"))
       target_extractor->analyzeFeatureMatrix(tgt_phrases->getUnlabeledPhrases());
+    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock();
+    target_extractor->writeCoocToFile(conf["target_cooc_matrix"].as<string>()); 
+    cout << "Time taken to write out co-oc file: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock(); 
     target_extractor->rescaleCoocToPMI();
+    cout << "Time taken: " << duration(start, clock())<< " seconds" << endl; 
+    start = clock(); 
     target_extractor->writeToFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
-    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;     
+    cout << "Time taken: " << duration(start, clock()) << " seconds" << endl;
     delete target_extractor; 
   }
   else if (stage == "constructgraphs"){
@@ -132,21 +146,44 @@ int main(int argc, char** argv){
     }    
   }
   else if (stage == "propagategraph"){
-    LexicalScorer* lex = new LexicalScorer(conf["lexical_model_location"].as<string>());     
-    tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); //check if defined in opts
-    cout << "Number of target phrases: " << tgt_phrases->getNumUnlabeledPhrases() << endl; 
+    LexicalScorer* lex = new LexicalScorer(conf["lexical_model_location"].as<string>()); 
+    tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); 
+    src_phrases->readLabelPhraseIDsFromFile(conf["target_phraseIDs"].as<string>()); //also add to label space
+    start = clock(); 
     Graph* src_graph = new Graph(conf["source_similarity_matrix"].as<string>()); 
+    cout << "Time taken to read similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
     Graph* tgt_graph = NULL; 
     string algo = conf["graph_propagation_algorithm"].as<string>();
-    transform(stage.begin(), stage.end(), stage.begin(), ::tolower);
-    if (conf.count("seed_target_knn") || algo== "structlabelprop")
-      tgt_graph = new Graph(conf["target_similarity_matrix"].as<string>()); 
-    
-    //read in stop words as phrases? 
-    //generate labels with lexical score --> need to read in lexical model, etc. for this
-    //then, compute marginals
-    //then, iterate and do labelprop 
-    //after all iterations complete, write out the expanded PT
+    transform(algo.begin(), algo.end(), algo.begin(), ::tolower);
+    if (conf.count("seed_target_knn") || algo == "structlabelprop")
+      tgt_graph = new Graph(conf["target_similarity_matrix"].as<string>());     
+    set<int> labelStopPhrases; 
+    if (conf.count("filter_stop_words"))
+      labelStopPhrases = FeatureExtractor::readStopWordsAsPhrases(conf["target_stopwords"].as<string>(), conf["stop_list_size"].as<int>(), tgt_phrases); 
+    start = clock(); 
+    src_graph->initLabelsWithLexScore(src_phrases, conf.count("seed_target_knn"), conf["mbest_processed_location"].as<string>(), lex, tgt_graph, conf["maximum_candidate_size"].as<int>(), conf.count("filter_stop_words"), labelStopPhrases);      
+    cout << "Time taken to initialize unlabeled phrases' candidates: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock(); 
+    src_phrases->computeMarginals(conf["source_cooc_matrix"].as<string>()); 
+    cout << "Source phrase marginals computed from co-occurrence matrix; Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    start = clock(); 
+    tgt_phrases->computeMarginals(conf["target_cooc_matrix"].as<string>()); 
+    cout << "Target phrase marginals computed from co-occurrence matrix; Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    cout << "Beginning label propagation" << endl; 
+    start = clock();     
+    for (int i = 0; i < conf["graph_propagation_iterations"].as<int>(); i++){
+      if (algo == "labelprop")
+	src_graph->labelProp(src_phrases); 
+      else if (algo == "structlabelprop")
+	src_graph->structLabelProp(src_phrases, tgt_graph); 
+      else
+	cerr << "Error: invalid option for graph propagation method.  Valid choices are 'LabelProp' and 'StructLabelProp'" << endl; 
+      cout << "Graph Propagation iteration " << i << " complete" << endl; 
+    }    
+    cout << "Graph propagation complete; Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    src_phrases->writePhraseTable(tgt_phrases, conf["phrase_table_format"].as<string>(), conf["expanded_phrase_table_loc"].as<string>(), lex); 
+    cout << "Expanded phrase table written to file" << endl; 
+    delete lex; 
   }
   delete opts;
   delete src_phrases;

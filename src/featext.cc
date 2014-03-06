@@ -1,5 +1,3 @@
-#include "featext.h"
-#include "phrases.h"
 #include <string>
 #include <vector>
 #include <tuple>
@@ -19,6 +17,7 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/set.hpp>
+#include "featext.h"
 
 using namespace std;
 using namespace Eigen; 
@@ -45,6 +44,10 @@ void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxL
   outFileInvIdx.close();  
   //if need be, we can write out featStr2ID as well
   saveMarket(feature_matrix, featMatLoc); 
+}
+
+void FeatureExtractor::writeCoocToFile(const string cooc_loc){
+  saveMarket(feature_matrix, cooc_loc); 
 }
 
 void FeatureExtractor::readFromFile(const string featMatLoc, const string invIdxLoc){
@@ -172,6 +175,28 @@ void FeatureExtractor::readStopWords(const string filename, const unsigned int n
   }
 }
 
+set<int> FeatureExtractor::readStopWordsAsPhrases(const string filename, const unsigned int num_sw, Phrases* phrases){
+  set<int> stopWords = set<int>();
+  ifstream stopwordsFile(filename.c_str()); 
+  if (stopwordsFile.is_open()){
+    string line; 
+    while (getline(stopwordsFile, line)){
+      if (stopWords.size() > num_sw)
+	break;
+      boost::trim(line);
+      vector<string> elements;
+      boost::split(elements, line, boost::is_any_of("\t")); 
+      assert(elements.size() == 2); 
+      if (elements[0] == "<s>" || elements[0] == "</s>")
+	continue;
+      stopWords.insert(phrases->getPhraseID(elements[0])); 
+    }
+    stopwordsFile.close(); 
+  }
+
+  return stopWords; 
+}
+
 void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filename, const unsigned int winsize, const unsigned int minPL, const unsigned int maxPL){
   ifstream monoFile(mono_filename.c_str()); 
   if (monoFile.is_open()){
@@ -189,7 +214,7 @@ void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filen
 	  tie(ngram, left_idx, right_idx) = order_ngrams[i]; 
 	  int phrID = phrases->getPhraseID(ngram); 
 	  if (phrID > -1){ //i.e., phrase exists in our list of phrases
-	    phrases->getNthPhrase(phrID)->count++; //is this a good idea? to modify directly? 
+	    //phrases->getNthPhrase(phrID)->count++; //is this a good idea? to modify directly? 
 	    int startIdx = 0; 
 	    int endIdx = left_idx; 
 	    if (left_idx > winsize)

@@ -39,9 +39,11 @@ Options::Options(int argc, char** argv){
     ("source_stopwords", po::value<string>()->default_value(""), "Location of sorted list of source-side types, from most frequent to least frequent")
     ("target_stopwords", po::value<string>()->default_value(""), "Location of list of target-side types, from most frequent to least frequent")
     ("stop_list_size", po::value<int>()->default_value(20), "Number of frequent types to consider (default: 20)")
-    ("source_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index and feature string to ID maps for source side")
-    ("target_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index and feature string to ID maps for target side")    
+    ("source_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index for source side")
+    ("target_feature_extractor", po::value<string>()->default_value(""), "Location to write inverted index for target side")    
+    ("source_cooc_matrix", po::value<string>()->default_value(""), "Location to write co-occurrence matrix on the source side")    
     ("source_feature_matrix", po::value<string>()->default_value(""), "Location of source feature matrix")
+    ("target_cooc_matrix", po::value<string>()->default_value(""), "Location to write co-occurrence matrix on the target side")    
     ("target_feature_matrix", po::value<string>()->default_value(""), "Location of target feature matrix")
     ("window_size", po::value<int>()->default_value(2), "Window size on each side to look for features for feature extraction (default: 2)")
     ("minimum_feature_count", po::value<int>()->default_value(0), "Minimum feature count of a feature for a phrase to be included in its feature space (default: 0)")
@@ -54,8 +56,11 @@ Options::Options(int argc, char** argv){
     ("analyze_similarity_matrix", "Whether to analyze the similarity matrix after it is constructed (default: false)")
     ("lexical_model_location", po::value<string>()->default_value(""), "Location of lexical model, which is used when sorting translation candidates for unlabeled phrases and also as a feature value when writing out the additional phrase table")
     ("graph_propagation_algorithm", po::value<string>()->default_value("LabelProp"), "What graph propagation algorithm to use; choices include: LabelProp and StructLabelProp (default: LabelProp)")
+    ("graph_propagation_iterations", po::value<int>()->default_value(3), "Number of iterations to propagate for (default: 3)")
     ("seed_target_knn", "Whether to use k-nearest neighbors according to target similarity graph when seeding translation candidates for unlabeled phrases (default: false)")    
-    ("maximum_candidate_size", po::value<int>()->default_value(50), "Maximum number of candidates to consider for each unlabeled phrase (default: 50)");
+    ("filter_stop_words", "If true, then when we initialize the translation candidate lists for the unlabeled phrases we filter out candidates that only consist of stop words (default: false)")
+    ("maximum_candidate_size", po::value<int>()->default_value(50), "Maximum number of candidates to consider for each unlabeled phrase (default: 50)")
+    ("expanded_phrase_table_loc", po::value<string>()->default_value(""), "Location to write the new phrases along with their features"); 
 
   if (argc > 1){    
     po::store(po::parse_command_line(argc, argv, clo), conf); 
@@ -129,7 +134,7 @@ void Options::checkParameterConsistency(){
 	cerr << "For 'ExtractFeatures' stage, on the input side need to define locations for source and target monolingual files (via 'source_monolingual' and 'target_monolingual' fields), the target side phrases and phrase IDs (from the corpora selection step) via 'target_phraseIDs', and the stop words on both source and target sides (via 'source_stopwords' and 'target-stopwords')" << endl; 
 	exit(0);
       }
-      else if (!(conf.count("source_feature_extractor")) || !(conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix")) || !(conf.count("target_feature_matrix"))){
+      else if (!(conf.count("source_feature_extractor")) || !(conf.count("target_feature_extractor")) || !(conf.count("source_feature_matrix")) || !(conf.count("target_feature_matrix")) || !(conf.count("source_cooc_matrix")) || !(conf.count("target_cooc_matrix"))){
 	cerr << "For 'ExtractFeatures' stage, on the output side need to define locations for feature string to ID maps and inverted index data structures (via the 'source_feature_extractor' and 'target_feature_extractor' fields), as well as the source and target feature matrices for downstream graph construction computation (via the 'source_feature_matrix' and 'target_feature_matrix' fields)" << endl; 
 	exit(0); 
       }
@@ -157,7 +162,11 @@ void Options::checkParameterConsistency(){
       transform(stage.begin(), stage.end(), stage.begin(), ::tolower);
       if ((algo == "structlabelprop") && !(conf.count("target_similarity_matrix"))){
 	cerr << "For 'PropagateGraphs' stage, if 'StructLabelProp' is the graph propagation algorithm, then you must define 'target_similarity_matrix' field" << endl; 
-	exit(0);
+	exit(0);	
+      }
+      if (!(conf.count("phrase_table_format"))){
+	cerr << "For 'PropagateGraphs' stage, need to define output location for new phrases" << endl; 
+	exit(0); 
       }
     }
     else {

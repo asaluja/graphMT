@@ -13,6 +13,7 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace io = boost::iostreams;
 namespace fs = boost::filesystem;
@@ -24,6 +25,7 @@ Phrases::Phrases(){
   all_phrases = vector<Phrase*>();
   phrStr2ID = map<string, unsigned int>();
   label_phrStr2ID = map<string, unsigned int>();
+  label_phrID2Str = map<unsigned int, string>(); 
   vocab = map<string, unsigned int>();
   max_tgtPL = make_tuple("", "", 0); 
   numLabeled = 0, numUnlabeled = 0; 
@@ -34,6 +36,7 @@ Phrases::Phrases(const Phrases* orig_phrases){
   all_phrases = vector<Phrase*>();
   phrStr2ID = map<string, unsigned int>(orig_phrases->label_phrStr2ID);
   label_phrStr2ID = map<string, unsigned int>();
+  label_phrID2Str = map<unsigned int, string>(); 
   vocab = map<string, unsigned int>();
   max_tgtPL = make_tuple("", "", 0);
   numLabeled = 0, numUnlabeled = 0; 
@@ -88,17 +91,59 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
   cout << "Total number of phrases now: " << numLabeled + numUnlabeled << endl; 
 }
 
+void Phrases::readLabelPhraseIDsFromFile(const string filename){
+  ifstream phraseIDs(filename.c_str()); 
+  if (phraseIDs.is_open()){
+    string line; 
+    while (getline(phraseIDs, line)){
+      boost::trim(line);
+      vector<string> elements = multiCharSplitter(line); 
+      assert(elements.size() == 2); 
+      if (label_phrStr2ID.find(elements[0]) == label_phrStr2ID.end()){ //new candidate in label space
+	assert(atoi(elements[1].c_str()) > 0); 
+	label_phrStr2ID[elements[0]] = atoi(elements[1].c_str()); //hopefully this is the same as above? how to check
+	label_phrID2Str[atoi(elements[1].c_str())] = elements[0]; 
+      }
+    }
+    phraseIDs.close(); 
+  }
+  cout << "Total number of label phrases now: " << label_phrStr2ID.size() << endl; 
+}
+
+void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, const string new_pt_loc, LexicalScorer* const lex){
+  ofstream out(new_pt_loc.c_str());  
+  vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases();
+  for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){
+    Phrase* phrase = unlabeled_phrases[i]; 
+    set<int> labels = phrase->getLabels(); 
+    vector<string> srcPhrases = vector<string>();
+    vector<string> tgtPhrases = vector<string>(); 
+    vector<pair<double, double> > fwd_bwd_prob = vector<pair<double, double> >(); 
+    for (set<int>::iterator it = labels.begin(); it != labels.end(); it++){
+      if (tgt_phrases->getNthPhrase(*it)->marginal > 0){
+	srcPhrases.push_back(phrase->phrase_str); 
+	tgtPhrases.push_back(getLabelPhraseStr(*it)); 
+	double fwd_prob = phrase->label_distribution[*it];
+	double bwd_prob = fwd_prob * (phrase->marginal / tgt_phrases->getNthPhrase(*it)->marginal); 
+	fwd_bwd_prob.push_back(make_pair(fwd_prob, bwd_prob)); 
+      }
+    }
+    vector<pair<double, double> > lex_scores = lex->scorePhrasePairs(srcPhrases, tgtPhrases); 
+    //need to incorporate cdec style grammar writing here, but for now just work with moses
+    assert(pt_format == "moses"); //moses order is P(f|e) lex(f|e) P(e|f) lex(e|f)
+    for (unsigned int j = 0; j < srcPhrases.size(); j++){
+      string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| "; 
+      out << output_line << endl; 
+      //don't think i need to do anything with alignments or counts      
+    }
+  }
+  out.close(); 
+}
+
 //goes through label distribution for each labeled soure phrase and normalizes (sum = 1)
 void Phrases::normalizeLabelDistributions(){  
-  typedef map<int,double>::iterator iter; //need to modify the map, so not const_iterator
-  for (unsigned int i = 0; i < all_phrases.size(); i++ ){
-    map<int,double>* labels = &all_phrases[i]->label_distribution; 
-    double normalizer = 0;
-    for (iter it = labels->begin(); it != labels->end(); it++ )
-      normalizer += it->second;
-    for (iter it = labels->begin(); it != labels->end(); it++ )
-      it->second /= normalizer;
-  }
+  for (unsigned int i = 0; i < all_phrases.size(); i++ )
+    all_phrases[i]->normalizeDistribution(); 
 }
 
 //function primarily meant for debugging
@@ -159,6 +204,26 @@ int Phrases::readMBestListFromFile(const string filename_in, const string filena
   oa << mbest_by_src; 
   outFile.close(); 
   return maxPL; 
+}
+
+map<const string, vector<string> > Phrases::readFormattedMBestListFromFile(const string mbest_processed_loc){
+  ifstream inFileMBestMap(mbest_processed_loc.c_str()); 
+  map<const string, vector<string> > mbest_by_src = map<const string, vector<string> >();
+  boost::archive::text_iarchive ia(inFileMBestMap); 
+  ia >> mbest_by_src; 
+  inFileMBestMap.close();
+  return mbest_by_src;   
+}
+
+void::Phrases::computeMarginals(const string cooc_loc){
+  SparseMatrix<double,RowMajor> cooc_matrix = SparseMatrix<double,RowMajor>();   
+  loadMarket(cooc_matrix, cooc_loc); 
+  VectorXd indFeatSumRow = cooc_matrix*VectorXd::Ones(cooc_matrix.cols()); //sum over features for each phrase
+  assert(indFeatSumRow.size() == all_phrases.size());   
+  double normalizer = indFeatSumRow.sum(); 
+  for (unsigned int i = 0; i < indFeatSumRow.size(); i++){
+    all_phrases[i]->marginal = indFeatSumRow[i] / normalizer; 
+  }
 }
 
 //goes through evaluation corpus, first extracts all n-grams of length PL, and then adds
@@ -338,6 +403,7 @@ void Phrases::addLabelCdec(Phrase* phrase, vector<string> elements){
   if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase
     label_id = label_phrStr2ID.size();
     label_phrStr2ID[tgtPhr] = label_id;
+    label_phrID2Str[label_id] = tgtPhr; 
   }
   else
     label_id = label_phrStr2ID[tgtPhr];
@@ -364,6 +430,7 @@ void Phrases::addLabelMoses(Phrase* phrase, vector<string> elements){
   if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase
     label_id = label_phrStr2ID.size();
     label_phrStr2ID[tgtPhr] = label_id;
+    label_phrID2Str[label_id] = tgtPhr; 
   }
   else
     label_id = label_phrStr2ID[tgtPhr];

@@ -25,13 +25,15 @@ class FeatureExtractor {
   static vector<ngram_triple> extractNGrams(const unsigned int n, const string str);
   vector<string> filterSentences(const string mono_dir_loc, Phrases* phrases, const unsigned int minPL, const unsigned int maxPL, const unsigned int maxPhrCount, const string monolingual_out); 
   void readStopWords(const string filename, const unsigned int num_sw); 
+  static set<int> readStopWordsAsPhrases(const string filename, const unsigned int num_sw, Phrases* phrases); 
   void extractFeatures(Phrases* phrases, const string mono_filename, const unsigned int winsize, const unsigned int minPL, const unsigned int maxPL); 
   void pruneFeaturesByCount(const unsigned int minCount); 
   void analyzeFeatureMatrix(const vector<Phrases::Phrase*> unlabeled_phrases); 
   void rescaleCoocToPMI();
+  void writeCoocToFile(const string cooc_loc); 
   void writeToFile(const string featMatLoc, const string invIdxLoc); 
   void readFromFile(const string featMatLoc, const string invIdxLoc); 
-  int getNumPoints() { return feature_matrix.rows(); }
+  unsigned int getNumPoints() { return feature_matrix.rows(); }
   int getNumFeatures(){ return feature_matrix.cols(); }
   SparseVector<double> getFeatureRow(const unsigned int rowIdx){ return feature_matrix.row(rowIdx); }
   set<unsigned int> getNeighbors(const unsigned int featID){ return (inverted_idx.find(featID) == inverted_idx.end()) ? set<unsigned int>() : inverted_idx[featID]; }

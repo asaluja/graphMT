@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <Python.h>
 
 using namespace std;
 
@@ -13,5 +14,5 @@ class LexicalScorer {
   
  private:
   string lexModel_loc; 
-    
+  PyObject *pModule;   
 };

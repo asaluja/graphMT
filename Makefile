@@ -14,7 +14,7 @@ LIBS = ${BOOST_LDFLAGS} ${BOOST_PROGRAM_OPTIONS_LIBS} ${BOOST_IOSTREAMS_LIBS} ${
 all: graph_prop
 
 graph_prop: src/main.cc src/options.cc src/phrases.cc src/featext.cc src/graph.cc src/lexical.cc
-	${COMPILER} ${CCFLAGS} ${INCLUDES} -o graph_prop src/main.cc src/options.cc src/phrases.cc src/featext.cc src/graph.cc src/lexical.cc ${LIBS}
+	${COMPILER} ${CCFLAGS} ${INCLUDES} -o graph_prop src/main.cc src/options.cc src/lexical.cc src/phrases.cc src/featext.cc src/graph.cc ${LIBS}
 
 clean:
 	rm -rf *.o graph_prop
