@@ -43,6 +43,7 @@ class FeatureExtractor {
   enum ContextSide { Left, Right };  
   static string concat(vector<string> words, const unsigned int start, const unsigned int end); 
   void addContext(const unsigned int phraseID, vector<string> subsent, const ContextSide side); 
+  void augmentFeatureMatrix(const unsigned int numTotalPhrases); 
   unsigned int getSetFeatureID(string featStr, const ContextSide side);
   set<unsigned int> stop_words; 
   map<string, unsigned int> featStr2ID; 

@@ -198,6 +198,7 @@ set<int> FeatureExtractor::readStopWordsAsPhrases(const string filename, const u
 }
 
 void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filename, const unsigned int winsize, const unsigned int minPL, const unsigned int maxPL){
+  const unsigned int numTotalPhrases = phrases->getNumUnlabeledPhrases() + phrases->getNumLabeledPhrases();
   ifstream monoFile(mono_filename.c_str()); 
   if (monoFile.is_open()){
     string line;
@@ -232,17 +233,34 @@ void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filen
 	      addContext(phrID, subsent, Right); 
 	    }
 	  }	  
-	}	
+	}
       }
+      if (featMat_triplets.size() > (featMat_triplets.max_size() / 2)) //to be conservative
+	augmentFeatureMatrix(numTotalPhrases); 
     }
     monoFile.close(); 
   }
-  const unsigned int numTotalPhrases = phrases->getNumUnlabeledPhrases() + phrases->getNumLabeledPhrases();
-  feature_matrix.resize(numTotalPhrases, featStr2ID.size()); 
-  feature_matrix.reserve(featMat_triplets.size()); 
-  feature_matrix.setFromTriplets(featMat_triplets.begin(), featMat_triplets.end()); 
-  featMat_triplets.clear(); 
+  augmentFeatureMatrix(numTotalPhrases); 
   cout << "Co-occurrence counts assembled into feature matrix, with dimensions " << numTotalPhrases << " x " << featStr2ID.size() << endl; 
+}
+
+void FeatureExtractor::augmentFeatureMatrix(const unsigned int numTotalPhrases){
+  cout << "Converting feature values seen thus far to sparse matrix" << endl; 
+  if (feature_matrix.size() == 0){
+    feature_matrix.resize(numTotalPhrases, featStr2ID.size()); 
+    feature_matrix.reserve(featMat_triplets.size()); 
+    feature_matrix.setFromTriplets(featMat_triplets.begin(), featMat_triplets.end()); 
+  }
+  else {
+    SparseMatrix<double,RowMajor> new_featMat = SparseMatrix<double,RowMajor>(); 
+    new_featMat.resize(numTotalPhrases, featStr2ID.size()); 
+    new_featMat.reserve(featMat_triplets.size()); 
+    new_featMat.setFromTriplets(featMat_triplets.begin(), featMat_triplets.end()); 
+    feature_matrix.resize(numTotalPhrases, featStr2ID.size()); //adding two feature matrices - need to resize current feature matrix? 
+    feature_matrix += new_featMat; 
+  }
+  featMat_triplets.clear(); 
+  cout << "NNZs in feature matrix: " << feature_matrix.nonZeros() << "; Dimensions: " << numTotalPhrases << " x " << featStr2ID.size() << endl; 
 }
 
 void FeatureExtractor::addContext(const unsigned int phraseID, vector<string> subsent, const ContextSide side){
