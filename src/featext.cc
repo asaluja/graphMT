@@ -39,6 +39,7 @@ FeatureExtractor::~FeatureExtractor(){
 
 void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxLoc){
   ofstream outFileInvIdx(invIdxLoc.c_str()); 
+  assert(outFileInvIdx != NULL); 
   boost::archive::text_oarchive oa(outFileInvIdx); //if this works, update phrases.cc too
   oa << inverted_idx; 
   outFileInvIdx.close();  
@@ -52,6 +53,7 @@ void FeatureExtractor::writeCoocToFile(const string cooc_loc){
 
 void FeatureExtractor::readFromFile(const string featMatLoc, const string invIdxLoc){
   ifstream inFileInvIdx(invIdxLoc.c_str());
+  assert(inFileInvIdx != NULL); 
   boost::archive::text_iarchive ia(inFileInvIdx); 
   ia >> inverted_idx; 
   inFileInvIdx.close(); 
@@ -73,6 +75,7 @@ vector<string> FeatureExtractor::filterSentences(const string mono_dir_loc, Phra
   if (fs::is_directory(dirPath)){
     ofstream filtered_sentences;
     filtered_sentences.open(monolingual_out.c_str()); 
+    assert(filtered_sentences != NULL); 
     vector<string> filenames; 
     fs::directory_iterator dir_iter(dirPath), dir_end;  
     for (; dir_iter != dir_end; dir_iter++){ //convert dir_iter to vector of strings for parallel computation
@@ -173,6 +176,7 @@ void FeatureExtractor::readStopWords(const string filename, const unsigned int n
     }
     stopwordsFile.close(); 
   }
+  else { cerr << "Could not read stop words at location " << filename << endl; exit(0); }
 }
 
 set<int> FeatureExtractor::readStopWordsAsPhrases(const string filename, const unsigned int num_sw, Phrases* phrases){
@@ -192,9 +196,9 @@ set<int> FeatureExtractor::readStopWordsAsPhrases(const string filename, const u
       stopWords.insert(phrases->getPhraseID(elements[0])); 
     }
     stopwordsFile.close(); 
+    return stopWords; 
   }
-
-  return stopWords; 
+  else { cerr << "Could not read stop words (as phrases) from location " << filename << endl; exit(0); }
 }
 
 void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filename, const unsigned int winsize, const unsigned int minPL, const unsigned int maxPL){
@@ -240,6 +244,7 @@ void FeatureExtractor::extractFeatures(Phrases* phrases, const string mono_filen
     }
     monoFile.close(); 
   }
+  else { cerr << "Could not open monolingual corpus at location " << mono_filename << endl; exit(0); }
   augmentFeatureMatrix(numTotalPhrases); 
   cout << "Co-occurrence counts assembled into feature matrix, with dimensions " << numTotalPhrases << " x " << featStr2ID.size() << endl; 
 }

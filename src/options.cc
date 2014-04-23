@@ -148,6 +148,10 @@ void Options::checkParameterConsistency(){
 	cerr << "For 'ConstructGraphs' stage, need to define the location to write the similarity matrix" << endl; 
 	exit(0); 
       }   
+      else if (conf.count("target_similarity_matrix") && conf.count("analyze_similarity_matrix") && !(conf.count("target_phraseIDs"))){
+	cerr << "For 'ConstructGraphs' stage, if you want to analyze the target similarity matrix you also need the target_phraseIDs field to be validly defined" << endl; 
+	exit(0);
+      } 
     }
     else if (stage == "propagategraph"){
       if (!(conf.count("source_similarity_matrix")) || !(conf.count("target_phraseIDs")) || !(conf.count("lexical_model_location"))){

@@ -11,6 +11,7 @@ const int numArgs = 3;
 
 LexicalScorer::LexicalScorer(const string location){
   lexModel_loc = location; 
+  assert(access(location.c_str(), F_OK) != -1); //assert for presence of lex model
   Py_Initialize(); 
   PyObject *sys = PyImport_ImportModule("sys");
   PyObject *path = PyObject_GetAttrString(sys, "path");

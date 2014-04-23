@@ -62,6 +62,7 @@ void Phrases::writePhraseIDsToFile(const string filename, const bool writeLabele
   else {
     ofstream phraseIDs;
     phraseIDs.open(filename.c_str()); 
+    assert(phraseIDs != NULL); 
     vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases(); 
     for (unsigned int i = 0; i < unlabeled_phrases.size(); i++)
       phraseIDs << unlabeled_phrases[i]->phrase_str << delimiter << unlabeled_phrases[i]->id << endl; 
@@ -85,8 +86,9 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
 	if (phrStr2ID.find(elements[0]) == phrStr2ID.end()) //i.e., we have not taken the label from the phrase table, it is a generated label that we are reading from file
 	  initPhrase(elements[0], tokens, false); 
       }
-    phraseIDs.close();    
+      phraseIDs.close();    
     }
+    else { cerr << "Could not read phrase IDs at location " << filename << endl; exit(0); }
   }
   cout << "Total number of phrases now: " << numLabeled + numUnlabeled << endl; 
 }
@@ -106,12 +108,14 @@ void Phrases::readLabelPhraseIDsFromFile(const string filename){
       }
     }
     phraseIDs.close(); 
+    cout << "Total number of label phrases now: " << label_phrStr2ID.size() << endl; 
   }
-  cout << "Total number of label phrases now: " << label_phrStr2ID.size() << endl; 
+  else { cerr << "Could not read phrase IDs for labels at location " << filename << endl; exit(0); }
 }
 
 void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, const string new_pt_loc, LexicalScorer* const lex){
   ofstream out(new_pt_loc.c_str());  
+  assert(out != NULL); 
   vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases();
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){
     Phrase* phrase = unlabeled_phrases[i]; 
@@ -198,8 +202,10 @@ int Phrases::readMBestListFromFile(const string filename_in, const string filena
     }
     mbest_list.close(); 
   }
+  else { cerr << "Could not open mbest list at location: " << filename_in << endl; exit(0); }
   cout << "Total number of mbest list candidates generated: " << all_phrases.size() << endl; 
   ofstream outFile(filename_out.c_str());
+  assert (outFile != NULL); 
   boost::archive::text_oarchive oa(outFile); 
   oa << mbest_by_src; 
   outFile.close(); 
@@ -208,11 +214,14 @@ int Phrases::readMBestListFromFile(const string filename_in, const string filena
 
 map<const string, vector<string> > Phrases::readFormattedMBestListFromFile(const string mbest_processed_loc){
   ifstream inFileMBestMap(mbest_processed_loc.c_str()); 
+  if (inFileMBestMap.good()){
   map<const string, vector<string> > mbest_by_src = map<const string, vector<string> >();
   boost::archive::text_iarchive ia(inFileMBestMap); 
   ia >> mbest_by_src; 
   inFileMBestMap.close();
   return mbest_by_src;   
+  }
+  else { cerr << "Could not read formatted m-best list from location " << mbest_processed_loc << endl; exit(0); }
 }
 
 void::Phrases::computeMarginals(const string cooc_loc){
@@ -231,38 +240,44 @@ void::Phrases::computeMarginals(const string cooc_loc){
 void Phrases::addUnlabeledPhrasesFromFile(const string filename, const unsigned int PL, const string out_filename, const bool analyze){
   map<const string, unsigned int> ngram_count = map<const string, unsigned int>();  
   ifstream eval_corpus(filename.c_str());
-  string line;
-  if (eval_corpus.is_open()){
-    while (getline(eval_corpus, line)){
-      boost::trim(line);
-      const vector<ngram_triple> ngrams_from_line = FeatureExtractor::extractNGrams(PL, line); 
-      string ngram;
-      for (unsigned int i = 0; i < ngrams_from_line.size(); i++ ){
-	tie(ngram, ignore, ignore) = ngrams_from_line[i]; 
-	pair<map<const string, unsigned int>::iterator,bool> ret; 
-	ret = ngram_count.insert(pair<const string, unsigned int>(ngram, 1)); 
-	if (ret.second == false)
-	  ngram_count[ngram]++;
+  if (eval_corpus.good()){
+    string line;
+    if (eval_corpus.is_open()){
+      while (getline(eval_corpus, line)){
+	boost::trim(line);
+	const vector<ngram_triple> ngrams_from_line = FeatureExtractor::extractNGrams(PL, line); 
+	string ngram;
+	for (unsigned int i = 0; i < ngrams_from_line.size(); i++ ){
+	  tie(ngram, ignore, ignore) = ngrams_from_line[i]; 
+	  pair<map<const string, unsigned int>::iterator,bool> ret; 
+	  ret = ngram_count.insert(pair<const string, unsigned int>(ngram, 1)); 
+	  if (ret.second == false)
+	    ngram_count[ngram]++;
+	}
       }
+      eval_corpus.close();
     }
-    eval_corpus.close();
+    cout << "Number of " << PL << "-grams in evaluation corpus: " << ngram_count.size() << endl;   
   }
-  cout << "Number of " << PL << "-grams in evaluation corpus: " << ngram_count.size() << endl;   
+  else { cerr << "Could not find evaluation corpus at " << filename << endl; exit(0); }
   ofstream unlabeled_phrases;
   unlabeled_phrases.open(out_filename.c_str()); //write out unlabeled n-grams
-  typedef map<const string, unsigned int>::const_iterator iter;
-  for (iter it = ngram_count.begin(); it != ngram_count.end(); it++ ){
-    const string srcPhr = it->first;
-    iter checkUnlabeled = phrStr2ID.find(srcPhr);
-    if (checkUnlabeled == phrStr2ID.end()){ //add phrases not in phrase table
-      vector<string> srcTokens;
-      boost::split(srcTokens, srcPhr, boost::is_any_of(" ")); 
-      initPhrase(srcPhr, srcTokens, false); 
-      unlabeled_phrases << srcPhr << endl; 
+  if (unlabeled_phrases != NULL){
+    typedef map<const string, unsigned int>::const_iterator iter;
+    for (iter it = ngram_count.begin(); it != ngram_count.end(); it++ ){
+      const string srcPhr = it->first;
+      iter checkUnlabeled = phrStr2ID.find(srcPhr);
+      if (checkUnlabeled == phrStr2ID.end()){ //add phrases not in phrase table
+	vector<string> srcTokens;
+	boost::split(srcTokens, srcPhr, boost::is_any_of(" ")); 
+	initPhrase(srcPhr, srcTokens, false); 
+	unlabeled_phrases << srcPhr << endl; 
+      }
     }
+    cout << "Number of unlabeled " << PL << "-grams in evaluation corpus: " << numUnlabeled << endl; 
+    unlabeled_phrases.close();
   }
-  cout << "Number of unlabeled " << PL << "-grams in evaluation corpus: " << numUnlabeled << endl; 
-  unlabeled_phrases.close();
+  else { cerr << "Could not write unlabeled phrases to location " << out_filename << endl; exit(0); }
   if (analyze) //if defined, we can analyze the phrases
     analyzeUnlabeledPhrases(ngram_count);
 }
@@ -304,24 +319,34 @@ void Phrases::analyzeUnlabeledPhrases(map<const string, unsigned int>& ngram_cou
 //function that goes through phrase table file and initializes labeled phrases
 void Phrases::addLabeledPhrasesFromFile(const string filename, const unsigned int PL, const string format){
   ifstream pt_file(filename.c_str()); //file handle for phrase table
-  const fs::path p(filename); //do we need to clean this up somewhere? 
   unsigned int numPhrases = 0; 
-  if (p.extension() == ".gz"){ //special handling for .gz files
-    io::filtering_stream<io::input> decompressor;
-    decompressor.push(io::gzip_decompressor());
-    decompressor.push(pt_file);
-    for (string line; getline(decompressor, line);){
-      initPhraseFromFile(line, PL, format); 
-      numPhrases++; 
-    }
-  }
-  else { //for non .gz files --> test this out properly!
-    string line;
-    if (pt_file.is_open()){
-      while (getline(pt_file, line))
-	initPhraseFromFile(line, PL, format);
+
+  if (pt_file.good()){
+    const fs::path p(filename); //do we need to clean this up somewhere? 
+    if (p.extension() == ".gz"){ //special handling for .gz files
+      io::filtering_stream<io::input> decompressor;
+      decompressor.push(io::gzip_decompressor());
+      decompressor.push(pt_file);
+      for (string line; getline(decompressor, line);){
+	initPhraseFromFile(line, PL, format); 
+	numPhrases++; 
+      }
       pt_file.close(); 
     }
+    else { //for non .gz files --> test this out properly!
+      string line;
+      if (pt_file.is_open()){
+	while (getline(pt_file, line)){
+	  initPhraseFromFile(line, PL, format);
+	  numPhrases++; 
+	}
+	pt_file.close(); 
+      }
+    }
+  }
+  else { 
+    cerr << "Cannot find phrase table at " << filename << endl; 
+    exit(0); 
   }
   cout << "Source vocabulary size: " << vocab.size() << endl; 
   cout << "Number of phrases in phrase table: " << numPhrases << endl; 
