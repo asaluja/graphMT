@@ -24,18 +24,18 @@ def computeLexicalScores(model_loc, src_phrases, tgt_phrases):
     return lexScores
 
 def maxLexEgivenF(fwords, ewords, ttable):
-    fwords.append('NULL')
+    local_f = fwords + ['NULL']
     maxOffScore = 0.0
     for e in ewords:
-        maxScore = max(ttable.get_score(f, e, 0) for f in fwords)
+        maxScore = max(ttable.get_score(f, e, 0) for f in local_f)
         maxOffScore += -math.log10(maxScore) if maxScore > 0 else MAXSCORE
     return math.pow(10, -maxOffScore)
 
 def maxLexFgivenE(fwords, ewords, ttable):
-    ewords.append('NULL')
+    local_e = ewords + ['NULL']
     maxOffScore = 0.0
     for f in fwords:
-        maxScore = max(ttable.get_score(f, e, 1) for e in ewords)
+        maxScore = max(ttable.get_score(f, e, 1) for e in local_e)
         maxOffScore += -math.log10(maxScore) if maxScore > 0 else MAXSCORE
     return math.pow(10, -maxOffScore)
 

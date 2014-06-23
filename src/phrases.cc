@@ -44,10 +44,9 @@ Phrases::Phrases(const Phrases* orig_phrases){
   for (iter it = phrStr2ID.begin(); it != phrStr2ID.end(); it++){ //adding target phrases as Phrase structs
     vector<string> tokens; 
     boost::split(tokens, it->first, boost::is_any_of(" "));    
-    initPhrase(it->first, tokens, false); 
+    initPhrase(it->first, tokens, it->second, false); 
+    //cout << "Initialized phrase: " << it->first << " with ID: " << it->second << endl; 
   }
-
-  cout << "Target vocabulary size: " << vocab.size() << endl; 
   cout << "Number of phrases: " << numLabeled + numUnlabeled << endl; 
 }
 
@@ -84,7 +83,7 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
 	vector<string> tokens;
 	boost::split(tokens, elements[0], boost::is_any_of(" ")); 
 	if (phrStr2ID.find(elements[0]) == phrStr2ID.end()) //i.e., we have not taken the label from the phrase table, it is a generated label that we are reading from file
-	  initPhrase(elements[0], tokens, false); 
+	  initPhrase(elements[0], tokens, atoi(elements[1].c_str()), false); 
       }
       phraseIDs.close();    
     }
@@ -93,6 +92,7 @@ void Phrases::readPhraseIDsFromFile(const string filename, const bool readLabele
   cout << "Total number of phrases now: " << numLabeled + numUnlabeled << endl; 
 }
 
+//N.B.: temporary change to this function - revert back later
 void Phrases::readLabelPhraseIDsFromFile(const string filename){
   ifstream phraseIDs(filename.c_str()); 
   if (phraseIDs.is_open()){
@@ -119,26 +119,33 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
   vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases();
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){
     Phrase* phrase = unlabeled_phrases[i]; 
-    set<int> labels = phrase->getLabels(); 
-    vector<string> srcPhrases = vector<string>();
-    vector<string> tgtPhrases = vector<string>(); 
-    vector<pair<double, double> > fwd_bwd_prob = vector<pair<double, double> >(); 
-    for (set<int>::iterator it = labels.begin(); it != labels.end(); it++){
-      if (tgt_phrases->getNthPhrase(*it)->marginal > 0){
-	srcPhrases.push_back(phrase->phrase_str); 
-	tgtPhrases.push_back(getLabelPhraseStr(*it)); 
-	double fwd_prob = phrase->label_distribution[*it];
-	double bwd_prob = fwd_prob * (phrase->marginal / tgt_phrases->getNthPhrase(*it)->marginal); 
-	fwd_bwd_prob.push_back(make_pair(fwd_prob, bwd_prob)); 
+    if (phrase->marginal > 0){ //otherwise we have not seen the phrase in the monolingual corpus at all
+      set<int> labels = phrase->getLabels(); 
+      vector<string> srcPhrases = vector<string>();
+      vector<string> tgtPhrases = vector<string>(); 
+      vector<pair<double, double> > fwd_bwd_prob = vector<pair<double, double> >(); 
+      for (set<int>::iterator it = labels.begin(); it != labels.end(); it++){
+	if (tgt_phrases->getNthPhrase(*it)->marginal > 0){
+	  srcPhrases.push_back(phrase->phrase_str); 
+	  tgtPhrases.push_back(getLabelPhraseStr(*it)); 
+	  double fwd_prob = phrase->label_distribution[*it];
+	  double bwd_prob = fwd_prob * (phrase->marginal / tgt_phrases->getNthPhrase(*it)->marginal); 
+	  /*cout << "F phrase: " << phrase->phrase_str << "; E phrase: " << getLabelPhraseStr(*it) << endl; 
+	  cout << "According to target phrases: " << tgt_phrases->getNthPhrase(*it)->phrase_str << endl; 
+	  cout << "According to source label, ID of phrase is: " << getLabelPhraseID(getLabelPhraseStr(*it)) << endl; 
+	  cout << "According to target phrases, ID of phrase is: " << tgt_phrases->getNthPhrase(*it)->id << endl; 
+	  cout << "Marginal probabilities are F: " << phrase->marginal << " and E: " << tgt_phrases->getNthPhrase(*it)->marginal << endl; */
+	  fwd_bwd_prob.push_back(make_pair(fwd_prob, bwd_prob)); 
+	}
       }
-    }
-    vector<pair<double, double> > lex_scores = lex->scorePhrasePairs(srcPhrases, tgtPhrases); 
-    //need to incorporate cdec style grammar writing here, but for now just work with moses
-    assert(pt_format == "moses"); //moses order is P(f|e) lex(f|e) P(e|f) lex(e|f)
-    for (unsigned int j = 0; j < srcPhrases.size(); j++){
-      string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| "; 
-      out << output_line << endl; 
-      //don't think i need to do anything with alignments or counts      
+      vector<pair<double, double> > lex_scores = lex->scorePhrasePairs(srcPhrases, tgtPhrases); 
+      //need to incorporate cdec style grammar writing here, but for now just work with moses
+      assert(pt_format == "moses"); //moses order is P(f|e) lex(f|e) P(e|f) lex(e|f)
+      for (unsigned int j = 0; j < srcPhrases.size(); j++){
+	string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| "; 
+	out << output_line << endl; 
+	//don't think i need to do anything with alignments or counts      
+      }
     }
   }
   out.close(); 
@@ -164,7 +171,7 @@ void Phrases::addGeneratedPhrases(const vector<string> generated_phrases){
     vector<string> tokens; 
     boost::split(tokens, generated_phrases[i], boost::is_any_of(" "));    
     if (phrStr2ID.find(generated_phrases[i]) == phrStr2ID.end()) //i.e., we have not taken the label from the phrase table, it is a generated label that we are reading
-      initPhrase(generated_phrases[i], tokens, false); 
+      initPhrase(generated_phrases[i], tokens, all_phrases.size(), false); 
   }
 }
 
@@ -270,7 +277,7 @@ void Phrases::addUnlabeledPhrasesFromFile(const string filename, const unsigned 
       if (checkUnlabeled == phrStr2ID.end()){ //add phrases not in phrase table
 	vector<string> srcTokens;
 	boost::split(srcTokens, srcPhr, boost::is_any_of(" ")); 
-	initPhrase(srcPhr, srcTokens, false); 
+	initPhrase(srcPhr, srcTokens, all_phrases.size(), false); 
 	unlabeled_phrases << srcPhr << endl; 
       }
     }
@@ -364,7 +371,7 @@ void Phrases::initPhraseFromFile(string line, const unsigned int phrase_length, 
   vector<string> srcTokens; //initialize this maybe? 
   boost::split(srcTokens, srcPhr, boost::is_any_of(" "));
   if (srcTokens.size() == phrase_length){
-    Phrase* phrase = (phrStr2ID.find(srcPhr) == phrStr2ID.end()) ? initPhrase(srcPhr, srcTokens, true) : all_phrases[phrStr2ID[srcPhr]]; 
+    Phrase* phrase = (phrStr2ID.find(srcPhr) == phrStr2ID.end()) ? initPhrase(srcPhr, srcTokens, all_phrases.size(), true) : all_phrases[phrStr2ID[srcPhr]]; 
     if (format == "cdec")
       addLabelCdec(phrase, elements);
     else
@@ -372,7 +379,7 @@ void Phrases::initPhraseFromFile(string line, const unsigned int phrase_length, 
   }
 }
  
-Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> tokens, bool isLabeled){
+Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> tokens, const int phrID, bool isLabeled){
   if (isLabeled){ //vocab is only used for unlabeled phrases analysis 
     for (unsigned int i = 0; i < tokens.size(); i++){ //add unigrams to vocab if not seen before
       if (vocab.find(tokens[i]) == vocab.end()){
@@ -381,7 +388,6 @@ Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> toke
       }
     }
   }
-  const int phrID = all_phrases.size();
   Phrase* phrase = new Phrase(phrID, phr, isLabeled); 
   phrStr2ID[phr] = phrID;
   all_phrases.push_back(phrase); 
@@ -449,7 +455,7 @@ void Phrases::addLabelMoses(Phrase* phrase, vector<string> elements){
   const string featStr = elements[2];
   vector<string> featStrVec;
   boost::split(featStrVec, featStr, boost::is_any_of(" "));
-  assert(featStrVec.size() == 4); //new moses phrase table format has 4 features
+  //assert(featStrVec.size() == 4); //new moses phrase table format has 4 features
   const double fwdPhrProb = atof(featStrVec[2].c_str()); //in moses, features are just string, P(e|f) is third one
   int label_id; 
   if (label_phrStr2ID.find(tgtPhr) == label_phrStr2ID.end()){ //new label phrase

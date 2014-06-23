@@ -151,19 +151,22 @@ int main(int argc, char** argv){
     src_phrases->readLabelPhraseIDsFromFile(conf["target_phraseIDs"].as<string>()); //also add to label space
     start = clock(); 
     Graph* src_graph = new Graph(conf["source_similarity_matrix"].as<string>()); 
-    cout << "Time taken to read similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
+    cout << "Time taken to read in source similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
     Graph* tgt_graph = NULL; 
     string algo = conf["graph_propagation_algorithm"].as<string>();
     transform(algo.begin(), algo.end(), algo.begin(), ::tolower);
-    if (conf.count("seed_target_knn") || algo == "structlabelprop")
+    if (conf.count("seed_target_knn") || algo == "structlabelprop"){
+      start = clock(); 
       tgt_graph = new Graph(conf["target_similarity_matrix"].as<string>());     
+      cout << "Time taken to read in target similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
+    }
     set<int> labelStopPhrases; 
     if (conf.count("filter_stop_words"))
       labelStopPhrases = FeatureExtractor::readStopWordsAsPhrases(conf["target_stopwords"].as<string>(), conf["stop_list_size"].as<int>(), tgt_phrases); 
     start = clock(); 
     src_graph->initLabelsWithLexScore(src_phrases, conf.count("seed_target_knn"), conf["mbest_processed_location"].as<string>(), lex, tgt_graph, conf["maximum_candidate_size"].as<int>(), conf.count("filter_stop_words"), labelStopPhrases);      
     cout << "Time taken to initialize unlabeled phrases' candidates: " << duration(start, clock()) << " seconds" << endl; 
-    start = clock(); 
+    start = clock();     
     src_phrases->computeMarginals(conf["source_cooc_matrix"].as<string>()); 
     cout << "Source phrase marginals computed from co-occurrence matrix; Time taken: " << duration(start, clock()) << " seconds" << endl; 
     start = clock(); 

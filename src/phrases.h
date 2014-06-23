@@ -83,7 +83,7 @@ class Phrases {
 
  private:
   void initPhraseFromFile(string line, const unsigned int phrase_length, const string format);
-  Phrase* initPhrase(const string srcPhr, const vector<string> srcTokens, bool isLabeled);
+  Phrase* initPhrase(const string srcPhr, const vector<string> srcTokens, const int phrID, bool isLabeled);
   void addLabelMoses(Phrase* phrase, vector<string> elements);
   void addLabelCdec(Phrase* phrase, vector<string> elements); 
   vector<string> multiCharSplitter(string line); 

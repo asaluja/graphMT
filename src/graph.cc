@@ -141,7 +141,6 @@ map<int, double> Graph::generateCandidateTranslations(const string phrStr, const
   if (sim_mat.row(phrID).nonZeros() > 1){ //make sure phrase has neighbors; > 1 because we always have self sim
     for (SparseMatrix<double,RowMajor>::InnerIterator it(sim_mat, phrID); it; ++it){
       int neighborIdx = it.col();
-      double sim = it.value(); 
       if (src_phrases->getNthPhrase(neighborIdx)->isLabeled()){ //if the neighbor is labeled
 	set<int> labels_from_neighbor = src_phrases->getNthPhrase(neighborIdx)->getLabels(); 
 	assert(labels_from_neighbor.size() > 0); 

@@ -155,7 +155,7 @@ void Options::checkParameterConsistency(){
     }
     else if (stage == "propagategraph"){
       if (!(conf.count("source_similarity_matrix")) || !(conf.count("target_phraseIDs")) || !(conf.count("lexical_model_location"))){
-	cerr << "For 'PropagateGraphs' stage, need to define at least the location of the source matrix and the target phrase IDs" << endl; 
+	cerr << "For 'PropagateGraphs' stage, need to define at least the location of the source matrix and the target phrase IDs, as well as the lexical model location for translation candidate list initialization" << endl; 
 	exit(0);
       }
       else if (conf.count("seed_target_knn") && !(conf.count("target_similarity_matrix"))){
