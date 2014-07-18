@@ -31,26 +31,26 @@ To be honest, the current system has not been tested in a wide variety of enviro
 The pipeline is controlled by a series of changes in the configuration file. Sample configuration files have been provided.  
 There are 5 stages to the pipeline: `SelectUnlabeled`, `SelectCorpora`, `ExtractFeatures`, `ConstructGraphs`, and `PropagateGraph`. 
 
-Prerequisites:
+#### Prerequisites:
 - A tuned baseline system with the accompanying parallel corpora and development set. 
 - Additional monolingual corpora in both source and target languages. 
 - An evaluation set. 
 
-Steps:
+#### Steps:
 - Combine the development set and evaluation set.  Modify the appropriate fields in config file and run `./graph_prop -c config.ini` (see `select_unlabeled.ini`)
 - Run baseline system on unlabeled phrases, and write out m-best phrases (e.g., for `moses`, run with the `-n-best-list` flag on)
 - Split monolingual corpora into evenly-sized files for corpus selection:
-
+  ```
   split -l numLinesPerFile -a 3 -d file
-
+  ```
   - Then, write a simple bash for loop to move/rename the files in the format "hi.X.gz" or "en.X.gz" where X is the file number. Don't forget that each file should be gzipped!
 - Run the SelectCorpora step on the source and target sides (see `cs.src.ini` and `cs.tgt.ini`)
 - After obtaining the selected monolingual corpora on both sides, concatenate with the parallel corpora. 
 - Create the stop-word list for both source and target languages using the concatenated monolingual + parallel corpora.  For example, we can use SRILM (or other tools):
-
+  ```
   ngram-count -text monolingual.text -write-order 1 -write en.1cnt
   sort -k2rn en.1cnt > en.1cnt.sorted
-  
+  ```
 - Run the feature extraction step (see `extract_features.ini`)
 - Run the graph construction steps on both sides (see `gc.src.ini` and `gc.tgt.ini`)
 - Run the graph propagation step (see `propagate_graphs.ini`)
