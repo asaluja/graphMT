@@ -44,6 +44,15 @@ void FeatureExtractor::writeToFile(const string featMatLoc, const string invIdxL
   oa << inverted_idx; 
   outFileInvIdx.close();  
   //if need be, we can write out featStr2ID as well
+  /*ofstream featureIDs; 
+  string filename = "/usr0/home/avneesh/graphMT/data/hi-en/extract-features/featIDs"; 
+  featureIDs.open(filename.c_str()); 
+  assert(featureIDs != NULL); 
+  typedef map<string, unsigned int>::const_iterator iter; 
+  for (iter it = featStr2ID.begin(); it != featStr2ID.end(); it++){
+    featureIDs << it->first << " ||| " << it->second << endl; 
+  }
+  featureIDs.close(); */
   saveMarket(feature_matrix, featMatLoc); 
 }
 

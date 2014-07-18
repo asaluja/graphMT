@@ -215,30 +215,23 @@ void Graph::labelProp(Phrases* src_phrases){
 	phrase->label_distribution.clear(); 
 	phrase->label_distribution.insert(newLabelDistr.begin(), newLabelDistr.end()); 
 	phrase->normalizeDistribution(); 
-	//for (map<int,double>::iterator it = phrase->label_distribution.begin(); it != phrase->label_distribution.end(); it++)
-	//  cout << "Label ID: " << it->first << "; phrase: " << src_phrases->getLabelPhraseStr(it->first) << " prob: " << it->second << endl; 
       }
     }
-    //else {
-    //  cout << "Size of label set for disconnected phrase: " << phrase->label_distribution.size() << endl; 
-    // }
   }
 }
 
 void Graph::structLabelProp(Phrases* src_phrases, Graph* tgt_graph){  
   vector<Phrases::Phrase*> unlabeled_phrases = src_phrases->getUnlabeledPhrases(); 
-  #pragma omp parallel for
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){ 
     Phrases::Phrase* phrase = unlabeled_phrases[i]; 
     if (sim_mat.row(phrase->id).nonZeros() > 1){ //check if phrase has neighbors
       set<int> phraseLabelsIdx = phrase->getLabels(); 
       map<int,double> newLabelDistr = map<int,double>(); 
-      //can we put the below in a pragma omp for loop? 
       for (SparseMatrix<double,RowMajor>::InnerIterator it(sim_mat, phrase->id); it; ++it){
 	if (it.col() != phrase->id){ //filtering for self-similarity
 	  Phrases::Phrase* neighbor = src_phrases->getNthPhrase(it.col()); 
 	  set<int> neighborLabelsIdx = neighbor->getLabels(); 	  
-	  for (set<int>::iterator it_i = neighborLabelsIdx.begin(); it_i != neighborLabelsIdx.end(); it_i++){
+	  for (set<int>::iterator it_i = neighborLabelsIdx.begin(); it_i != neighborLabelsIdx.end(); it_i++){ //instead of computing set intersection, we loop through all neighbor label-candidate label pairs
 	    for (set<int>::iterator it_j = phraseLabelsIdx.begin(); it_j != phraseLabelsIdx.end(); it_j++){
 	      double label_prob = neighbor->label_distribution[*it_i]*sim_mat.coeff(phrase->id, neighbor->id)*tgt_graph->getSimilarity(*it_j, *it_i); 
 	      if (newLabelDistr.find(*it_j) == newLabelDistr.end())
@@ -252,6 +245,8 @@ void Graph::structLabelProp(Phrases* src_phrases, Graph* tgt_graph){
       if (newLabelDistr.size() > 0){
 	phrase->label_distribution.clear(); 
 	phrase->label_distribution.insert(newLabelDistr.begin(), newLabelDistr.end()); 
+	//can we put an if condition on the insert above? 
+	//or, we loop through newLabelDistr and check if val is > 0 and if so, we add it
 	phrase->normalizeDistribution(); 
       }
     }

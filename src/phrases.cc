@@ -34,18 +34,20 @@ Phrases::Phrases(){
 //constructor for initializing phrases of other side
 Phrases::Phrases(const Phrases* orig_phrases){
   all_phrases = vector<Phrase*>();
+  all_phrases.resize(orig_phrases->label_phrStr2ID.size()); 
   phrStr2ID = map<string, unsigned int>(orig_phrases->label_phrStr2ID);
-  label_phrStr2ID = map<string, unsigned int>();
-  label_phrID2Str = map<unsigned int, string>(); 
-  vocab = map<string, unsigned int>();
+  label_phrStr2ID = map<string, unsigned int>(); //dummy DS for target phrases
+  label_phrID2Str = map<unsigned int, string>(); //dummy DS for target phrases
+  vocab = map<string, unsigned int>(); //dummy for target phrases
   max_tgtPL = make_tuple("", "", 0);
   numLabeled = 0, numUnlabeled = 0; 
   typedef map<string,unsigned int>::const_iterator iter;
   for (iter it = phrStr2ID.begin(); it != phrStr2ID.end(); it++){ //adding target phrases as Phrase structs
     vector<string> tokens; 
     boost::split(tokens, it->first, boost::is_any_of(" "));    
-    initPhrase(it->first, tokens, it->second, false); 
-    //cout << "Initialized phrase: " << it->first << " with ID: " << it->second << endl; 
+    Phrase* phrase = new Phrase(it->second, it->first, false); 
+    all_phrases[it->second] = phrase; 
+    numUnlabeled++; 
   }
   cout << "Number of phrases: " << numLabeled + numUnlabeled << endl; 
 }
@@ -130,11 +132,6 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
 	  tgtPhrases.push_back(getLabelPhraseStr(*it)); 
 	  double fwd_prob = phrase->label_distribution[*it];
 	  double bwd_prob = fwd_prob * (phrase->marginal / tgt_phrases->getNthPhrase(*it)->marginal); 
-	  /*cout << "F phrase: " << phrase->phrase_str << "; E phrase: " << getLabelPhraseStr(*it) << endl; 
-	  cout << "According to target phrases: " << tgt_phrases->getNthPhrase(*it)->phrase_str << endl; 
-	  cout << "According to source label, ID of phrase is: " << getLabelPhraseID(getLabelPhraseStr(*it)) << endl; 
-	  cout << "According to target phrases, ID of phrase is: " << tgt_phrases->getNthPhrase(*it)->id << endl; 
-	  cout << "Marginal probabilities are F: " << phrase->marginal << " and E: " << tgt_phrases->getNthPhrase(*it)->marginal << endl; */
 	  fwd_bwd_prob.push_back(make_pair(fwd_prob, bwd_prob)); 
 	}
       }
@@ -142,8 +139,10 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
       //need to incorporate cdec style grammar writing here, but for now just work with moses
       assert(pt_format == "moses"); //moses order is P(f|e) lex(f|e) P(e|f) lex(e|f)
       for (unsigned int j = 0; j < srcPhrases.size(); j++){
-	string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| "; 
-	out << output_line << endl; 
+	if (fwd_bwd_prob[j].first > 0){
+	  string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| ";
+	  out << output_line << endl; 
+	}
 	//don't think i need to do anything with alignments or counts      
       }
     }
@@ -390,7 +389,7 @@ Phrases::Phrase* Phrases::initPhrase(const string phr, const vector<string> toke
   }
   Phrase* phrase = new Phrase(phrID, phr, isLabeled); 
   phrStr2ID[phr] = phrID;
-  all_phrases.push_back(phrase); 
+  all_phrases.push_back(phrase); //BUG!!!!!
   if (isLabeled)
     numLabeled++;
   else
