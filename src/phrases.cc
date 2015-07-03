@@ -119,18 +119,26 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
   ofstream out(new_pt_loc.c_str());  
   assert(out != NULL); 
   vector<Phrase*> unlabeled_phrases = getUnlabeledPhrases();
+  int num_src_marginal_pos = 0;
+  int num_tgt_marginal_pos = 0; 
+  int num_prob_pos = 0; 
+  cout << "Number of unlabeled phrases to write out: " << unlabeled_phrases.size() << endl; 
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){
     Phrase* phrase = unlabeled_phrases[i]; 
     if (phrase->marginal > 0){ //otherwise we have not seen the phrase in the monolingual corpus at all
+      num_src_marginal_pos++; 
       set<int> labels = phrase->getLabels(); 
       vector<string> srcPhrases = vector<string>();
       vector<string> tgtPhrases = vector<string>(); 
       vector<pair<double, double> > fwd_bwd_prob = vector<pair<double, double> >(); 
       for (set<int>::iterator it = labels.begin(); it != labels.end(); it++){
 	if (tgt_phrases->getNthPhrase(*it)->marginal > 0){
+	  num_tgt_marginal_pos++; 
 	  srcPhrases.push_back(phrase->phrase_str); 
 	  tgtPhrases.push_back(getLabelPhraseStr(*it)); 
 	  double fwd_prob = phrase->label_distribution[*it];
+	  if (fwd_prob == 0)
+	    cout << "Phrase pair '" << phrase->phrase_str << " ||| " << getLabelPhraseStr(*it) << "' with IDs (" << phrase->id << "," << *it <<") has P(e|f) = 0" << endl; 
 	  double bwd_prob = fwd_prob * (phrase->marginal / tgt_phrases->getNthPhrase(*it)->marginal); 
 	  fwd_bwd_prob.push_back(make_pair(fwd_prob, bwd_prob)); 
 	}
@@ -140,6 +148,7 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
       assert(pt_format == "moses"); //moses order is P(f|e) lex(f|e) P(e|f) lex(e|f)
       for (unsigned int j = 0; j < srcPhrases.size(); j++){
 	if (fwd_bwd_prob[j].first > 0){
+	  num_prob_pos++; 
 	  string output_line = srcPhrases[j] + " ||| " + tgtPhrases[j] + " ||| " + boost::lexical_cast<string>(fwd_bwd_prob[j].second) + " " + boost::lexical_cast<string>(lex_scores[j].second) + " " + boost::lexical_cast<string>(fwd_bwd_prob[j].first) + " " + boost::lexical_cast<string>(lex_scores[j].first) + " ||| ";
 	  out << output_line << endl; 
 	}
@@ -148,6 +157,9 @@ void Phrases::writePhraseTable(Phrases* tgt_phrases, const string pt_format, con
     }
   }
   out.close(); 
+  cout << "Number of source marginal positive phrases: " << num_src_marginal_pos << endl; 
+  cout << "Number of target marginal positive phrases out of valid phrase pairs: " << num_tgt_marginal_pos << endl; 
+  cout << "Number of valid lexical score phrase pairs: " << num_prob_pos << endl; 
 }
 
 //goes through label distribution for each labeled soure phrase and normalizes (sum = 1)

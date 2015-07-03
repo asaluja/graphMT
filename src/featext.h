@@ -33,10 +33,12 @@ class FeatureExtractor {
   void writeCoocToFile(const string cooc_loc); 
   void writeToFile(const string featMatLoc, const string invIdxLoc); 
   void readFromFile(const string featMatLoc, const string invIdxLoc); 
+  double computeCosineSim(const int idx_i, const int idx_j); 
   unsigned int getNumPoints() { return feature_matrix.rows(); }
   int getNumFeatures(){ return feature_matrix.cols(); }
   SparseVector<double> getFeatureRow(const unsigned int rowIdx){ return feature_matrix.row(rowIdx); }
   set<unsigned int> getNeighbors(const unsigned int featID){ return (inverted_idx.find(featID) == inverted_idx.end()) ? set<unsigned int>() : inverted_idx[featID]; }
+  SparseMatrix<double,RowMajor> getFeatureMatrix() { return feature_matrix; }
 
   
  private:

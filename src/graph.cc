@@ -6,6 +6,44 @@
 using namespace std;
 using namespace Eigen;
 
+DynamicGraph::DynamicGraph(FeatureExtractor* features){
+  feat_mat = SparseMatrix<double,RowMajor>(features->getFeatureMatrix()); 
+  cache = map<string, double>(); 
+}
+
+DynamicGraph::DynamicGraph(const string dgLoc){
+  loadMarket(feat_mat, dgLoc); 
+  cache = map<string, double>(); 
+}
+
+DynamicGraph::~DynamicGraph(){
+}
+
+void DynamicGraph::writeToFile(const string dgLoc){
+  saveMarket(feat_mat, dgLoc); 
+}
+
+double DynamicGraph::getSimilarity(const int i, const int j){
+  char ix[100]; 
+  char iy[100]; 
+  double sim; 
+  sprintf(ix, "%d,%d", i, j); 
+  if (cache.find(ix) == cache.end()){ //not found in cache; compute, add to cache
+    SparseVector<double> vec1 = feat_mat.row(i); 
+    SparseVector<double> vec2 = feat_mat.row(j); 
+    sim = vec1.dot(vec2) / (vec1.norm() * vec2.norm());     
+    if (sim < 0)
+      cout << "Phrase ID pair (" << i << "," << j << ") has negative similarity: " << sim << endl; 
+    sim = (sim < 0) ? 0 : sim; 
+    cache[ix] = sim; 
+    sprintf(iy, "%d,%d", j, i); 
+    cache[iy] = sim; 
+  }
+  else
+    sim = cache[ix]; 
+  return sim; 
+}
+
 Graph::Graph(FeatureExtractor* features, const unsigned int k){
   sim_mat = SparseMatrix<double,RowMajor>();
   sim_mat_triplets = vector<triplet>(); 
@@ -15,7 +53,7 @@ Graph::Graph(FeatureExtractor* features, const unsigned int k){
   for (unsigned int i = 0; i < features->getNumPoints(); i++){
     SparseVector<double> featureVec = features->getFeatureRow(i);     
     set<unsigned int> neighbors = set<unsigned int>();
-    for (SparseVector<double>::InnerIterator it(featureVec); it; ++it){
+    for (SparseVector<double>::InnerIterator it(featureVec); it; ++it){ //use the inverted idx structure to generate neighbors
       set<unsigned int> neighbors_by_feature = features->getNeighbors(it.index()); 
       neighbors.insert(neighbors_by_feature.begin(), neighbors_by_feature.end()); //or use set_union instead? which is faster? 
     }
@@ -23,14 +61,14 @@ Graph::Graph(FeatureExtractor* features, const unsigned int k){
       vector<pair<unsigned int, double> > idxsAndDotProds = vector<pair<unsigned int, double> >(); 
       idxsAndDotProds.reserve(neighbors.size()); 
       set<unsigned int>::iterator iter; 
-      for (iter = neighbors.begin(); iter != neighbors.end(); iter++){
+      for (iter = neighbors.begin(); iter != neighbors.end(); iter++){ //loop through all neighbors and compute sim
 	if ((*iter) != i){ //filtering for self similarity	  
 	  double dp = featureVec.dot(features->getFeatureRow(*iter)) / (featureVec.norm() * features->getFeatureRow(*iter).norm()); 
 	  if (dp > 0)
 	    idxsAndDotProds.push_back(make_pair(*iter, dp)); 
 	}
       }
-      if (idxsAndDotProds.size() > 0){
+      if (idxsAndDotProds.size() > 0){ //if at least one of the similarities is positive
 	sort(idxsAndDotProds.begin(), idxsAndDotProds.end(), [](const pair<unsigned int, double>& lhs, const pair<unsigned int, double>& rhs){ return lhs.second > rhs.second; }); //in descending order
 	unsigned int topN = (k < idxsAndDotProds.size()) ? k : idxsAndDotProds.size(); 
 	vector<pair<unsigned int, double> > topK_idxsDPs(idxsAndDotProds.begin(), idxsAndDotProds.begin()+topN);     
@@ -41,7 +79,7 @@ Graph::Graph(FeatureExtractor* features, const unsigned int k){
 	  sim_mat_triplets.push_back(triplet(i, i, 1.0)); 
 	}
       }
-      else { 
+      else { //all similarities are negative
 	negative_similarities++; 
         #pragma omp critical(addSparseTripletSelfSim)
 	{
@@ -49,7 +87,7 @@ Graph::Graph(FeatureExtractor* features, const unsigned int k){
 	}
       }
     }
-    else { 
+    else { //no neighbors
       featureless_phrases++; 
       #pragma omp critical(addSparseTripletSelfSimFeatureless)
 	{
@@ -114,24 +152,28 @@ void Graph::analyzeSimilarityMatrix(const vector<Phrases::Phrase*> unlabeled_phr
   cout << "Number of completely disconnected unlabeled nodes: " << zr_unl << endl; 
 }
 
-void Graph::initLabelsWithLexScore(Phrases* src_phrases, const bool useKNN, const string mbest_processed_loc, LexicalScorer* const lex, Graph* tgt_graph, const int maxCand_size, const bool filter_sw, set<int> stopWords){
+void Graph::initLabelsWithLexScore(Phrases* src_phrases, const string mbest_processed_loc, LexicalScorer* const lex, const int maxCand_size, const bool filter_sw, set<int> stopWords){
   if (filter_sw)
     assert(stopWords.size() > 0); 
   unsigned int numCandidates = 0; 
   vector<Phrases::Phrase*> unlabeled_phrases = src_phrases->getUnlabeledPhrases(); 
   map<const string, vector<string> > mbest_by_src = src_phrases->readFormattedMBestListFromFile(mbest_processed_loc); //static method, can be read by either src_phrases or tgt_phrases
+  #pragma omp parallel for
   for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){ //initialize candidates for each unlabeled phrase
     const string srcphr = unlabeled_phrases[i]->phrase_str; 
      vector<string> mbest_candidates = vector<string>();
     if (mbest_by_src.find(srcphr) != mbest_by_src.end())
       mbest_candidates = mbest_by_src[srcphr]; //associate unlabeled phrase with generated candidates
     map<int,double> candidate_list = generateCandidateTranslations(srcphr, src_phrases->getPhraseID(srcphr), src_phrases, mbest_candidates, lex, maxCand_size, filter_sw, stopWords); //initialize candidate distribution
-    unlabeled_phrases[i]->label_distribution.insert(candidate_list.begin(), candidate_list.end()); 
-    numCandidates += unlabeled_phrases[i]->label_distribution.size(); 
+#pragma omp critical(updateDistribution)
+    {
+      unlabeled_phrases[i]->label_distribution.insert(candidate_list.begin(), candidate_list.end()); 
+      numCandidates += unlabeled_phrases[i]->label_distribution.size(); 
+    }
   }
   src_phrases->normalizeLabelDistributions(); 
   //print candidate translations? if enabled, put here
-  cout << "Average label set size of unlabeled phrases: " << ((double)numCandidates)/((double)unlabeled_phrases.size()) << endl;
+  cout << "Finished initializing candidate lists for unlabeled phrases. Average label set size: " << ((double)numCandidates)/((double)unlabeled_phrases.size()) << endl;
 }
 
 map<int, double> Graph::generateCandidateTranslations(const string phrStr, const int phrID, Phrases* const src_phrases, const vector<string> mbest_candidates, LexicalScorer* const lex, const int maxCand_size, const bool filter_sw, set<int> stopWords){
@@ -155,7 +197,6 @@ map<int, double> Graph::generateCandidateTranslations(const string phrStr, const
   }
   if (filter_sw)
     filterCandidatesForStopWords(labels, stopWords); 
-  //implement usekNN functionality later
   vector<string> srcPhrases = vector<string>();
   vector<string> tgtPhrases = vector<string>();
   for (set<int>::iterator it = labels.begin(); it != labels.end(); it++){ //convert to phrase pairs
@@ -220,21 +261,31 @@ void Graph::labelProp(Phrases* src_phrases){
   }
 }
 
-void Graph::structLabelProp(Phrases* src_phrases, Graph* tgt_graph){  
+void Graph::structLabelProp(Phrases* src_phrases, void* tgt_graph, bool dynamic){  
+  DynamicGraph* dyn_graph = NULL; 
+  Graph* graph = NULL; 
+  if (dynamic)
+    dyn_graph = static_cast<DynamicGraph*>(tgt_graph); 
+  else
+    graph = static_cast<Graph*>(tgt_graph); 
   vector<Phrases::Phrase*> unlabeled_phrases = src_phrases->getUnlabeledPhrases(); 
-  for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){ 
+  for (unsigned int i = 0; i < unlabeled_phrases.size(); i++){ //loop through unlabeled phrases and update
     Phrases::Phrase* phrase = unlabeled_phrases[i]; 
     if (sim_mat.row(phrase->id).nonZeros() > 1){ //check if phrase has neighbors
       set<int> phraseLabelsIdx = phrase->getLabels(); 
       map<int,double> newLabelDistr = map<int,double>(); 
-      for (SparseMatrix<double,RowMajor>::InnerIterator it(sim_mat, phrase->id); it; ++it){
+      for (SparseMatrix<double,RowMajor>::InnerIterator it(sim_mat, phrase->id); it; ++it){ //iterate through neighbors on source side
 	if (it.col() != phrase->id){ //filtering for self-similarity
 	  Phrases::Phrase* neighbor = src_phrases->getNthPhrase(it.col()); 
 	  set<int> neighborLabelsIdx = neighbor->getLabels(); 	  
-	  for (set<int>::iterator it_i = neighborLabelsIdx.begin(); it_i != neighborLabelsIdx.end(); it_i++){ //instead of computing set intersection, we loop through all neighbor label-candidate label pairs
-	    for (set<int>::iterator it_j = phraseLabelsIdx.begin(); it_j != phraseLabelsIdx.end(); it_j++){
-	      double label_prob = neighbor->label_distribution[*it_i]*sim_mat.coeff(phrase->id, neighbor->id)*tgt_graph->getSimilarity(*it_j, *it_i); 
-	      if (newLabelDistr.find(*it_j) == newLabelDistr.end())
+	  for (set<int>::iterator it_i = neighborLabelsIdx.begin(); it_i != neighborLabelsIdx.end(); it_i++){ //instead of computing set intersection, we loop through all neighbor labels
+	    for (set<int>::iterator it_j = phraseLabelsIdx.begin(); it_j != phraseLabelsIdx.end(); it_j++){ //loop through own labels
+	      double label_prob = (dynamic) ? neighbor->label_distribution[*it_i]*sim_mat.coeff(phrase->id, neighbor->id)*dyn_graph->getSimilarity(*it_j, *it_i) : neighbor->label_distribution[*it_i]*sim_mat.coeff(phrase->id, neighbor->id)*graph->getSimilarity(*it_j, *it_i); 
+	      /*if (label_prob == 0){
+		cout << "Zero prob. during label propagation; source phrase is '" << phrase->phrase_str << "'" << endl; 
+		cout << "Candidate target phrases are '" << src_phrases->getLabelPhraseStr(*it_j) << "' (ID: " << *it_j << ") and '" << src_phrases->getLabelPhraseStr(*it_i) << "' (ID: " << *it_i << ")" << endl; 
+		}*/
+	      if (newLabelDistr.find(*it_j) == newLabelDistr.end()) //if label has not been added to new label distribution
 		newLabelDistr[*it_j] = label_prob; 
 	      else
 		newLabelDistr[*it_j] += label_prob; 

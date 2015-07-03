@@ -128,17 +128,27 @@ int main(int argc, char** argv){
     else if (side == "target"){
       cout << "Starting graph construction on target side" << endl; 
       start = clock(); 
-      featuresFromFile->readFromFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>()); 
-      Graph* tgt_graph = new Graph(featuresFromFile, conf["k_nearest_neighbors"].as<int>()); 
-      if (conf.count("analyze_similarity_matrix")){
-	tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); //check if defined in opts
-	tgt_graph->analyzeSimilarityMatrix(tgt_phrases->getUnlabeledPhrases());
+      featuresFromFile->readFromFile(conf["target_feature_matrix"].as<string>(), conf["target_feature_extractor"].as<string>());       
+      if (conf.count("dynamic_similarity_matrix")){
+	DynamicGraph* tgt_graph = new DynamicGraph(featuresFromFile); 
+	cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+	start = clock(); 
+	tgt_graph->writeToFile(conf["target_similarity_matrix"].as<string>()); 
+	cout << "Time taken for writing out matrix: " << duration(start, clock()) << " seconds" << endl; 
+	delete tgt_graph;
       }
-      cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
-      start = clock(); 
-      tgt_graph->writeToFile(conf["target_similarity_matrix"].as<string>()); 
-      cout << "Time taken for writing out matrix: " << duration(start, clock()) << " seconds" << endl; 
-      delete tgt_graph;
+      else {
+	Graph* tgt_graph = new Graph(featuresFromFile, conf["k_nearest_neighbors"].as<int>()); 
+	if (conf.count("analyze_similarity_matrix")){
+	  tgt_phrases->readPhraseIDsFromFile(conf["target_phraseIDs"].as<string>(), false); //check if defined in opts
+	  tgt_graph->analyzeSimilarityMatrix(tgt_phrases->getUnlabeledPhrases());
+	}
+	cout << "Time taken: " << duration(start, clock()) << " seconds" << endl; 
+	start = clock(); 
+	tgt_graph->writeToFile(conf["target_similarity_matrix"].as<string>()); 
+	cout << "Time taken for writing out matrix: " << duration(start, clock()) << " seconds" << endl; 
+	delete tgt_graph;
+      }
     }
     else {
       cerr << "Incorrect argument for 'graph_construction_side' field" << endl; 
@@ -152,19 +162,11 @@ int main(int argc, char** argv){
     start = clock(); 
     Graph* src_graph = new Graph(conf["source_similarity_matrix"].as<string>()); 
     cout << "Time taken to read in source similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
-    Graph* tgt_graph = NULL; 
-    string algo = conf["graph_propagation_algorithm"].as<string>();
-    transform(algo.begin(), algo.end(), algo.begin(), ::tolower);
-    if (conf.count("seed_target_knn") || algo == "structlabelprop"){
-      start = clock(); 
-      tgt_graph = new Graph(conf["target_similarity_matrix"].as<string>());     
-      cout << "Time taken to read in target similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
-    }
     set<int> labelStopPhrases; 
     if (conf.count("filter_stop_words"))
       labelStopPhrases = FeatureExtractor::readStopWordsAsPhrases(conf["target_stopwords"].as<string>(), conf["stop_list_size"].as<int>(), tgt_phrases); 
     start = clock(); 
-    src_graph->initLabelsWithLexScore(src_phrases, conf.count("seed_target_knn"), conf["mbest_processed_location"].as<string>(), lex, tgt_graph, conf["maximum_candidate_size"].as<int>(), conf.count("filter_stop_words"), labelStopPhrases);      
+    src_graph->initLabelsWithLexScore(src_phrases, conf["mbest_processed_location"].as<string>(), lex, conf["maximum_candidate_size"].as<int>(), conf.count("filter_stop_words"), labelStopPhrases);      
     cout << "Time taken to initialize unlabeled phrases' candidates: " << duration(start, clock()) << " seconds" << endl; 
     start = clock();     
     src_phrases->computeMarginals(conf["source_cooc_matrix"].as<string>()); 
@@ -172,18 +174,30 @@ int main(int argc, char** argv){
     start = clock(); 
     tgt_phrases->computeMarginals(conf["target_cooc_matrix"].as<string>()); 
     cout << "Target phrase marginals computed from co-occurrence matrix; Time taken: " << duration(start, clock()) << " seconds" << endl; 
-    cout << "Beginning label propagation" << endl; 
-    start = clock();     
-    for (int i = 0; i < conf["graph_propagation_iterations"].as<int>(); i++){
-      if (algo == "labelprop")
-	src_graph->labelProp(src_phrases); 
-      else if (algo == "structlabelprop")
-	src_graph->structLabelProp(src_phrases, tgt_graph); 
-      else
+    cout << "Beginning graph propagation" << endl; 
+    clock_t gp_start = clock();     
+    string algo = conf["graph_propagation_algorithm"].as<string>();
+    transform(algo.begin(), algo.end(), algo.begin(), ::tolower);
+    if (algo == "structlabelprop"){
+      bool dynamic = conf.count("dynamic_similarity_matrix"); 
+      start = clock(); 
+      void* tgt_graph; 
+      tgt_graph = (dynamic) ? static_cast<void*>(new DynamicGraph(conf["target_similarity_matrix"].as<string>())) : static_cast<void*>(new Graph(conf["target_similarity_matrix"].as<string>())); 
+      cout << "Time taken to read in target similarity matrix: " << duration(start, clock()) << " seconds" << endl; 
+      for (int i = 0; i < conf["graph_propagation_iterations"].as<int>(); i++){
+	src_graph->structLabelProp(src_phrases, tgt_graph, dynamic);
+	cout << "Graph Propagation iteration " << i << " complete" << endl; 
+      }
+    }
+    else if (algo == "labelprop"){
+      for (int i = 0; i < conf["graph_propagation_iterations"].as<int>(); i++){
+	src_graph->labelProp(src_phrases);
+	cout << "Graph Propagation iteration " << i << " complete" << endl; 
+      }
+    }
+    else
 	cerr << "Error: invalid option for graph propagation method.  Valid choices are 'LabelProp' and 'StructLabelProp'" << endl; 
-      cout << "Graph Propagation iteration " << i << " complete" << endl; 
-    }    
-    cout << "Graph propagation complete; Time taken: " << duration(start, clock()) << " seconds" << endl; 
+    cout << "Graph propagation complete; Time taken: " << duration(gp_start, clock()) << " seconds" << endl; 
     src_phrases->writePhraseTable(tgt_phrases, conf["phrase_table_format"].as<string>(), conf["expanded_phrase_table_loc"].as<string>(), lex); 
     cout << "Expanded phrase table written to file" << endl; 
     delete lex; 

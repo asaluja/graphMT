@@ -2,17 +2,16 @@
 
 #include <string>
 #include <vector>
-#include <Python.h>
+#include "extractor/translation_table.h"
 
 using namespace std;
 
 class LexicalScorer {
  public:
   LexicalScorer(const string location);
-  ~LexicalScorer();
-  vector<pair<double,double> > scorePhrasePairs(vector<string> srcPhrases, vector<string> tgtPhrases);
+  vector<pair<double,double> > scorePhrasePairs(const vector<string> srcPhrases, const vector<string> tgtPhrases); 
   
  private:
   string lexModel_loc; 
-  PyObject *pModule;   
+  extractor::TranslationTable table; 
 };

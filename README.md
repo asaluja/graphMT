@@ -63,8 +63,7 @@ There are 5 stages to the pipeline: `SelectUnlabeled`, `SelectCorpora`, `Extract
 ## Things to add
 
 - full support for grammars/phrase tables extracted from cdec's phrase extraction process
-- on-the-fly target similarity computation (obviating the need for a target graph)
-- parallelized candidate list initialization (issues with the global interpreter lock in Python currently)
+- integration with pre-computed word or phrase representations for on-the-fly target similarity computation (obviating the need for a target graph)
 - re-estimation of target phrase distributions for labeled source phrases (i.e., from the phrase table), leading towards applications in domain adaptation
 - support for different similarity computation techniques
 - support for neural-based distributed representations for words/phrases

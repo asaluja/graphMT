@@ -1,67 +1,51 @@
 #include "lexical.h"
-#include <iostream>
-#include <Python.h>
+#include <fstream>
+#include <cmath>
+#include <boost/algorithm/string.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include "extractor/translation_table.h"
+#include "extractor/data_array.h"
 
 using namespace std; 
-const char* dirName = "/usr0/home/avneesh/graphMT/code/graph-propagation/scripts";
-const char* libName = "/usr0/home/avneesh/tools/cdec/python/build/lib.linux-x86_64-2.7"; 
-const char* scriptName = "lexical_scorer"; 
-const char* funcName = "computeLexicalScores"; 
-const int numArgs = 3; 
+const string NULL_WORD_STR = "__NULL__"; 
+const int MAXSCORE = 99; 
 
 LexicalScorer::LexicalScorer(const string location){
   lexModel_loc = location; 
   assert(access(location.c_str(), F_OK) != -1); //assert for presence of lex model
-  Py_Initialize(); 
-  PyObject *sys = PyImport_ImportModule("sys");
-  PyObject *path = PyObject_GetAttrString(sys, "path");
-  PyList_Append(path, PyString_FromString(dirName)); //sys path already has libname in it from PYTHONPATH
-  pModule = PyImport_ImportModule(scriptName); //should have dirNameand libName in place
-  assert(pModule != NULL); 
-  if (PyErr_Occurred())
-    PyErr_Print();
+  table = extractor::TranslationTable();
+  ifstream ttable_fstream(lexModel_loc); 
+  boost::archive::binary_iarchive ttable_stream(ttable_fstream); 
+  ttable_stream >> table;           
 }
 
-LexicalScorer::~LexicalScorer(){
-  Py_Finalize(); 
-  Py_DECREF(pModule); //is this correct? 
-  pModule = NULL; //added this
-}
-
-vector<pair<double,double> > LexicalScorer::scorePhrasePairs(vector<string> srcPhrases, vector<string> tgtPhrases){
+vector<pair<double,double> > LexicalScorer::scorePhrasePairs(const vector<string> srcPhrases, const vector<string> tgtPhrases){
+  assert(srcPhrases.size() == tgtPhrases.size()); 
   vector<pair<double,double> > lex_scores = vector<pair<double,double> >(); 
-  PyObject *pDict, *pFunc; 
-  PyObject *pArgs;
-  pDict = PyModule_GetDict(pModule);  
-  if (pDict != NULL){
-    pFunc = PyDict_GetItemString(pDict, funcName); //borrowed function
-    if (pFunc && PyCallable_Check(pFunc)){
-      pArgs = PyTuple_New(numArgs); //own reference
-      PyObject *model_loc = PyString_FromString(lexModel_loc.c_str()); //own reference
-      PyTuple_SetItem(pArgs, 0, model_loc); //takes over ownership, no need for DECREF for model_loc
-      PyObject *srcPyObj = PyList_New(srcPhrases.size()); 
-      for (unsigned int i = 0; i < srcPhrases.size(); i++)
-	PyList_SetItem(srcPyObj, i, PyString_FromString(srcPhrases[i].c_str()));
-      PyObject *tgtPyObj = PyList_New(tgtPhrases.size()); 
-      for (unsigned int i = 0; i < tgtPhrases.size(); i++)
-	PyList_SetItem(tgtPyObj, i, PyString_FromString(tgtPhrases[i].c_str())); 
-      //need to have some general error tracking in case we can't convert args
-      PyTuple_SetItem(pArgs, 1, srcPyObj);
-      PyTuple_SetItem(pArgs, 2, tgtPyObj); 
-      PyObject *lexScores = PyObject_CallObject(pFunc, pArgs);       
-      if (lexScores){ //if successful, run the following
-	for (unsigned int i = 0; i < PyList_Size(lexScores); i++ ){
-	  PyObject *fwd_bwd_PyTuple = PyList_GetItem(lexScores, i); 
-	  pair<double, double> fwd_bwd_lex = make_pair(PyFloat_AsDouble(PyTuple_GetItem(fwd_bwd_PyTuple, 0)), PyFloat_AsDouble(PyTuple_GetItem(fwd_bwd_PyTuple, 1))); 
-	  lex_scores.push_back(fwd_bwd_lex); 	
-	}
-      }
-      Py_DECREF(pArgs);       //dereference here otherwise mem leak? 
+  for (unsigned int i = 0; i < srcPhrases.size(); i++){
+    vector<string> src_words, tgt_words; 
+    boost::split(src_words, srcPhrases[i], boost::is_any_of(" ")); 
+    boost::split(tgt_words, tgtPhrases[i], boost::is_any_of(" ")); 
+    tgt_words.push_back(NULL_WORD_STR); 
+    double bwd_score = 0; 
+    for (unsigned int j = 0; j < src_words.size(); j++){ //starting lex(f|e) computation
+      double max_score = 0; 
+      for (unsigned int k = 0; k < tgt_words.size(); k++)
+	max_score = max(max_score, table.GetSourceGivenTargetScore(src_words[j], tgt_words[k])); 
+      bwd_score += max_score > 0 ? -log10(max_score) : MAXSCORE; 
     }
-    else { cerr << "Function call not successful" << endl; }
-    return lex_scores; 
+    src_words.push_back(NULL_WORD_STR); 
+    tgt_words.pop_back(); //removes null word string from target words
+    double fwd_score = 0; 
+    for (unsigned int j = 0; j < tgt_words.size(); j++){ //starting lex(e|f) computation
+      double max_score = 0;
+      for (unsigned int k = 0; k < src_words.size(); k++)
+	max_score = max(max_score, table.GetTargetGivenSourceScore(src_words[k], tgt_words[j])); 
+      fwd_score += max_score > 0 ? -log10(max_score) : MAXSCORE; 
+    }
+    pair<double, double> fwd_bwd_lex = make_pair(pow(10, -fwd_score), pow(10, -bwd_score)); 
+    lex_scores.push_back(fwd_bwd_lex); 
   }
-  else { cerr << "Could not get dictionary of functions from module" << endl; }
   return lex_scores; 
 }
 

@@ -53,11 +53,11 @@ Options::Options(int argc, char** argv){
     ("k_nearest_neighbors", po::value<int>()->default_value(500), "Number of nearest neighbors to include when constructing the similarity graphs (default: 500)")    
     ("source_similarity_matrix", po::value<string>()->default_value(""), "Location of source similarity matrix, in X format")
     ("target_similarity_matrix", po::value<string>()->default_value(""), "Location of target similarity matrix, in X format")
+    ("dynamic_similarity_matrix", "Whether to compute target phrase similarities on the fly and cache (true), or pre-compute target similarity matrix (false) (default: false)")
     ("analyze_similarity_matrix", "Whether to analyze the similarity matrix after it is constructed (default: false)")
     ("lexical_model_location", po::value<string>()->default_value(""), "Location of lexical model, which is used when sorting translation candidates for unlabeled phrases and also as a feature value when writing out the additional phrase table")
     ("graph_propagation_algorithm", po::value<string>()->default_value("LabelProp"), "What graph propagation algorithm to use; choices include: LabelProp and StructLabelProp (default: LabelProp)")
     ("graph_propagation_iterations", po::value<int>()->default_value(3), "Number of iterations to propagate for (default: 3)")
-    ("seed_target_knn", "Whether to use k-nearest neighbors according to target similarity graph when seeding translation candidates for unlabeled phrases (default: false)")    
     ("filter_stop_words", "If true, then when we initialize the translation candidate lists for the unlabeled phrases we filter out candidates that only consist of stop words (default: false)")
     ("maximum_candidate_size", po::value<int>()->default_value(50), "Maximum number of candidates to consider for each unlabeled phrase (default: 50)")
     ("expanded_phrase_table_loc", po::value<string>()->default_value(""), "Location to write the new phrases along with their features"); 
@@ -152,15 +152,19 @@ void Options::checkParameterConsistency(){
 	cerr << "For 'ConstructGraphs' stage, if you want to analyze the target similarity matrix you also need the target_phraseIDs field to be validly defined" << endl; 
 	exit(0);
       } 
+      else if (!(conf.count("target_similarity_matrix")) && conf.count("dynamic_similarity_matrix")){
+	cerr << "'dynamic_similarity_matrix' option only valid for target similarity matrix" << endl; 
+	exit(0); 
+      }
+      else if (conf.count("analyze_similarity_matrix") && conf.count("dynamic_similarity_matrix")){
+	cerr << "Cannot analyze dynamic similarity matrix; please disable 'analyze_similarity_matrix' flag" << endl; 
+	exit(0); 
+      }
     }
     else if (stage == "propagategraph"){
       if (!(conf.count("source_similarity_matrix")) || !(conf.count("target_phraseIDs")) || !(conf.count("lexical_model_location"))){
 	cerr << "For 'PropagateGraphs' stage, need to define at least the location of the source matrix and the target phrase IDs, as well as the lexical model location for translation candidate list initialization" << endl; 
 	exit(0);
-      }
-      else if (conf.count("seed_target_knn") && !(conf.count("target_similarity_matrix"))){
-	cerr << "For 'PropagateGraphs' stage, if 'seed_target_knn' field is enabled, then you must define 'target_similarity_matrix' field" << endl; 
-	exit(0); 
       }
       string algo = conf["graph_propagation_algorithm"].as<string>();
       transform(stage.begin(), stage.end(), stage.begin(), ::tolower);
